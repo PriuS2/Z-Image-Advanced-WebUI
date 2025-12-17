@@ -94,3 +94,5 @@ htmlcov/
 frontend/package-lock.json
 frontend/node_modules/*
 
+# ===== db =====
+zimage.db
