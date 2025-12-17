@@ -69,8 +69,25 @@ echo.
 :: ==========================================
 :: Step 5: Install VideoX-Fun
 :: ==========================================
-:: Step 5: Frontend Setup (Node.js / npm)
-echo [5/5] Setting up Frontend...
+echo [5/6] Installing VideoX-Fun...
+if exist "VideoX-Fun\pyproject.toml" (
+    pip install -e ./VideoX-Fun
+    if errorlevel 1 (
+        echo [WARNING] VideoX-Fun installation may have issues.
+        echo You can manually install later with: pip install -e ./VideoX-Fun
+    ) else (
+        echo VideoX-Fun installed successfully.
+    )
+) else (
+    echo [WARNING] VideoX-Fun folder not found. Skipping...
+    echo Make sure to initialize git submodules: git submodule update --init --recursive
+)
+echo.
+
+:: ==========================================
+:: Step 6: Frontend Setup (Node.js / npm)
+:: ==========================================
+echo [6/6] Setting up Frontend...
 
 :: Check if npm is installed
 where npm >nul 2>nul

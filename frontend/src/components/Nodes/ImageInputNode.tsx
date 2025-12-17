@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { generationApi } from '../../api/generation'
@@ -10,9 +10,11 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
   const { setParams } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
+  const { deleteElements } = useReactFlow()
   
   const [image, setImage] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
 
   const uploadFile = async (file: File) => {
     setIsUploading(true)
@@ -57,7 +59,21 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
   }
 
   return (
-    <div className={`min-w-[200px] rounded-lg border bg-card p-4 ${selected ? 'border-primary' : 'border-border'}`}>
+    <div 
+      className={`min-w-[240px] rounded-lg border bg-card p-4 pr-14 relative ${selected ? 'border-primary' : 'border-border'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Delete button */}
+      {isHovered && (
+        <button
+          onClick={() => deleteElements({ nodes: [{ id }] })}
+          className="absolute -right-2 -top-2 z-10 rounded-full bg-destructive p-1 text-destructive-foreground 
+            hover:bg-destructive/80 transition-colors shadow-md"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       <div className="mb-3 text-sm font-semibold">{t('nodes.image')}</div>
       
       {image ? (
@@ -75,7 +91,7 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
           <button
             onClick={clearImage}
             disabled={isUploading}
-            className="absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground disabled:opacity-50"
+            className="nodrag absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground disabled:opacity-50"
           >
             <X className="h-3 w-3" />
           </button>
@@ -95,7 +111,7 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="absolute inset-0 cursor-pointer opacity-0"
+            className="nodrag absolute inset-0 cursor-pointer opacity-0"
           />
         </div>
       )}
@@ -105,8 +121,11 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
         type="source"
         position={Position.Right}
         id="output"
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-blue-500 !w-3 !h-3"
       />
+      <div className="absolute right-2 top-[50%] -translate-y-1/2 text-[9px] text-blue-500 font-medium">
+        Image
+      </div>
     </div>
   )
 }

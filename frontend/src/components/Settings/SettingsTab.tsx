@@ -120,20 +120,44 @@ export function SettingsTab() {
     }
   }, [isDownloading])
 
-  // 모델 다운로드
-  const handleDownloadModel = async () => {
+  // 기본 모델 다운로드 (Z-Image-Turbo)
+  const handleDownloadBaseModel = async () => {
     setIsDownloading(true)
     setDownloadProgress({
       status: 'downloading',
       progress: 0,
-      message: 'Starting download...',
+      message: 'Starting base model download...',
+      repo_id: 'Tongyi-MAI/Z-Image-Turbo',
+    })
+    
+    try {
+      const result = await modelsApi.download({
+        repo_id: 'Tongyi-MAI/Z-Image-Turbo',
+        destination: 'models/Diffusion_Transformer/',
+      })
+      toastSuccess(t('common.success'), result.message)
+      // Keep polling for actual completion
+    } catch (error) {
+      setIsDownloading(false)
+      setDownloadProgress(null)
+      toastError(t('common.error'), error instanceof Error ? error.message : 'Failed to download model')
+    }
+  }
+
+  // ControlNet 모델 다운로드
+  const handleDownloadControlNet = async () => {
+    setIsDownloading(true)
+    setDownloadProgress({
+      status: 'downloading',
+      progress: 0,
+      message: 'Starting ControlNet download...',
       repo_id: 'alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0',
     })
     
     try {
       const result = await modelsApi.download({
         repo_id: 'alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0',
-        destination: 'models/',
+        destination: 'models/Personalized_Model/',
       })
       toastSuccess(t('common.success'), result.message)
       // Keep polling for actual completion
@@ -297,7 +321,7 @@ export function SettingsTab() {
             </div>
             
             {/* Model actions */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button 
                 onClick={handleLoadModel}
                 disabled={isLoading}
@@ -322,19 +346,39 @@ export function SettingsTab() {
                 )}
                 {t('settings.unloadModel')}
               </button>
-              <button 
-                onClick={handleDownloadModel}
-                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm 
-                  text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                disabled={isDownloading}
-              >
-                {isDownloading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {t('settings.downloadModel')}
-              </button>
+            </div>
+
+            {/* Download buttons */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('settings.downloadModel')}</label>
+              <div className="flex gap-2 flex-wrap">
+                <button 
+                  onClick={handleDownloadBaseModel}
+                  className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm 
+                    text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  disabled={isDownloading}
+                >
+                  {isDownloading && downloadProgress?.repo_id.includes('Z-Image-Turbo') && !downloadProgress?.repo_id.includes('Controlnet') ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Z-Image-Turbo (기본 모델)
+                </button>
+                <button 
+                  onClick={handleDownloadControlNet}
+                  className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm 
+                    hover:bg-secondary/80 disabled:opacity-50"
+                  disabled={isDownloading}
+                >
+                  {isDownloading && downloadProgress?.repo_id.includes('Controlnet') ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  ControlNet Union
+                </button>
+              </div>
             </div>
 
             {/* Download progress */}

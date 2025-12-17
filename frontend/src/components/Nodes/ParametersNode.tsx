@@ -1,7 +1,7 @@
-import { memo } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { memo, useState } from 'react'
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
-import { Shuffle } from 'lucide-react'
+import { Shuffle, X } from 'lucide-react'
 import { useGenerationStore } from '../../stores/generationStore'
 
 const resolutionPresets = [
@@ -18,13 +18,29 @@ const samplers = ['Flow', 'Flow_Unipc', 'Flow_DPM++']
 function ParametersNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
   const { params, setParams } = useGenerationStore()
+  const { deleteElements } = useReactFlow()
+  const [isHovered, setIsHovered] = useState(false)
 
   const randomizeSeed = () => {
     setParams({ seed: Math.floor(Math.random() * 2147483647) })
   }
 
   return (
-    <div className={`min-w-[280px] rounded-lg border bg-card p-4 ${selected ? 'border-primary' : 'border-border'}`}>
+    <div 
+      className={`min-w-[320px] rounded-lg border bg-card p-4 pr-16 relative ${selected ? 'border-primary' : 'border-border'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Delete button */}
+      {isHovered && (
+        <button
+          onClick={() => deleteElements({ nodes: [{ id }] })}
+          className="absolute -right-2 -top-2 z-10 rounded-full bg-destructive p-1 text-destructive-foreground 
+            hover:bg-destructive/80 transition-colors shadow-md"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       <div className="mb-3 text-sm font-semibold">{t('nodes.parameters')}</div>
       
       {/* Resolution presets */}
@@ -35,7 +51,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
             <button
               key={preset.label}
               onClick={() => setParams({ width: preset.width, height: preset.height })}
-              className={`px-2 py-1 rounded text-xs transition-colors
+              className={`nodrag px-2 py-1 rounded text-xs transition-colors
                 ${params.width === preset.width && params.height === preset.height
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -57,7 +73,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
             type="number"
             value={params.width}
             onChange={(e) => setParams({ width: parseInt(e.target.value) || 1024 })}
-            className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+            className="nodrag w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
             step={64}
             min={256}
             max={2048}
@@ -71,7 +87,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
             type="number"
             value={params.height}
             onChange={(e) => setParams({ height: parseInt(e.target.value) || 1024 })}
-            className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+            className="nodrag w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
             step={64}
             min={256}
             max={2048}
@@ -88,7 +104,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
           type="range"
           value={params.steps}
           onChange={(e) => setParams({ steps: parseInt(e.target.value) })}
-          className="w-full accent-primary"
+          className="nodrag w-full accent-primary"
           min={1}
           max={50}
         />
@@ -103,7 +119,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
           type="range"
           value={params.controlScale * 100}
           onChange={(e) => setParams({ controlScale: parseInt(e.target.value) / 100 })}
-          className="w-full accent-primary"
+          className="nodrag w-full accent-primary"
           min={0}
           max={100}
         />
@@ -120,11 +136,11 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
             value={params.seed ?? ''}
             onChange={(e) => setParams({ seed: e.target.value ? parseInt(e.target.value) : null })}
             placeholder={t('generate.randomSeed')}
-            className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm"
+            className="nodrag flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm"
           />
           <button
             onClick={randomizeSeed}
-            className="rounded-md bg-secondary p-2 hover:bg-secondary/80 transition-colors"
+            className="nodrag rounded-md bg-secondary p-2 hover:bg-secondary/80 transition-colors"
             title={t('generate.randomSeed')}
           >
             <Shuffle className="h-4 w-4" />
@@ -140,7 +156,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
         <select
           value={params.sampler}
           onChange={(e) => setParams({ sampler: e.target.value })}
-          className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+          className="nodrag w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
         >
           {samplers.map((sampler) => (
             <option key={sampler} value={sampler}>
@@ -155,8 +171,11 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
         type="source"
         position={Position.Right}
         id="output"
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-purple-500 !w-3 !h-3"
       />
+      <div className="absolute right-2 top-[50%] -translate-y-1/2 text-[9px] text-purple-500 font-medium">
+        Params
+      </div>
     </div>
   )
 }

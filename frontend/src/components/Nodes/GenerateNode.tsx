@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
-import { Play, Loader2 } from 'lucide-react'
+import { Play, Loader2, X } from 'lucide-react'
 import { useGenerationStore } from '../../stores/generationStore'
 import { generationApi } from '../../api/generation'
 import { useToast } from '../../hooks/useToast'
@@ -10,6 +10,8 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
   const { params, progress, startGeneration, setLastGeneratedImage } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
+  const { deleteElements } = useReactFlow()
+  const [isHovered, setIsHovered] = useState(false)
 
   const handleGenerate = async () => {
     if (!params.prompt) {
@@ -40,29 +42,52 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
   const isGenerating = progress.isGenerating
 
   return (
-    <div className={`min-w-[180px] rounded-lg border bg-card p-4 ${selected ? 'border-primary' : 'border-border'}`}>
+    <div 
+      className={`min-w-[220px] rounded-lg border bg-card p-4 pl-14 pr-14 relative ${selected ? 'border-primary' : 'border-border'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Delete button */}
+      {isHovered && (
+        <button
+          onClick={() => deleteElements({ nodes: [{ id }] })}
+          className="absolute -right-2 -top-2 z-10 rounded-full bg-destructive p-1 text-destructive-foreground 
+            hover:bg-destructive/80 transition-colors shadow-md"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       {/* Input handles */}
       <Handle
         type="target"
         position={Position.Left}
         id="prompt"
         style={{ top: '30%' }}
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-green-500 !w-3 !h-3"
       />
+      <div className="absolute left-2 text-[9px] text-green-500 font-medium" style={{ top: '27%' }}>
+        Prompt
+      </div>
       <Handle
         type="target"
         position={Position.Left}
         id="params"
         style={{ top: '50%' }}
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-purple-500 !w-3 !h-3"
       />
+      <div className="absolute left-2 text-[9px] text-purple-500 font-medium" style={{ top: '47%' }}>
+        Params
+      </div>
       <Handle
         type="target"
         position={Position.Left}
         id="control"
         style={{ top: '70%' }}
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-orange-500 !w-3 !h-3"
       />
+      <div className="absolute left-2 text-[9px] text-orange-500 font-medium" style={{ top: '67%' }}>
+        Control
+      </div>
       
       <div className="mb-3 text-sm font-semibold">{t('nodes.generate')}</div>
       
@@ -70,7 +95,7 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
       <button
         onClick={handleGenerate}
         disabled={isGenerating}
-        className={`w-full flex items-center justify-center gap-2 rounded-md px-4 py-3 text-sm font-medium
+        className={`nodrag w-full flex items-center justify-center gap-2 rounded-md px-4 py-3 text-sm font-medium
           transition-all duration-200
           ${isGenerating 
             ? 'bg-primary/50 cursor-not-allowed' 
@@ -110,8 +135,11 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
         type="source"
         position={Position.Right}
         id="output"
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-blue-500 !w-3 !h-3"
       />
+      <div className="absolute right-2 top-[50%] -translate-y-1/2 text-[9px] text-blue-500 font-medium">
+        Image
+      </div>
     </div>
   )
 }

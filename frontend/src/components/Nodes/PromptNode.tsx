@@ -1,12 +1,14 @@
 import { memo, useState } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
-import { Languages, Sparkles, Loader2 } from 'lucide-react'
+import { Languages, Sparkles, Loader2, X } from 'lucide-react'
 import { useGenerationStore } from '../../stores/generationStore'
 import { generationApi } from '../../api/generation'
 import { useToast } from '../../hooks/useToast'
 
 function PromptNodeComponent({ id, selected }: NodeProps) {
+  const { deleteElements } = useReactFlow()
+  const [isHovered, setIsHovered] = useState(false)
   const { t } = useTranslation()
   const { params, setParams } = useGenerationStore()
   const { error: toastError } = useToast()
@@ -43,7 +45,21 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
   }
 
   return (
-    <div className={`min-w-[300px] rounded-lg border bg-card p-4 ${selected ? 'border-primary' : 'border-border'}`}>
+    <div 
+      className={`min-w-[360px] rounded-lg border bg-card p-4 pl-8 pr-16 relative ${selected ? 'border-primary' : 'border-border'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Delete button */}
+      {isHovered && (
+        <button
+          onClick={() => deleteElements({ nodes: [{ id }] })}
+          className="absolute -right-2 -top-2 z-10 rounded-full bg-destructive p-1 text-destructive-foreground 
+            hover:bg-destructive/80 transition-colors shadow-md"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       <div className="mb-3 text-sm font-semibold">{t('nodes.prompt')}</div>
       
       {/* Korean prompt */}
@@ -54,7 +70,7 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         <textarea
           value={params.promptKo}
           onChange={(e) => setParams({ promptKo: e.target.value })}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+          className="nodrag w-full rounded-md border border-input bg-background px-3 py-2 text-sm
             resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           rows={2}
           placeholder="한국어 프롬프트 입력..."
@@ -62,7 +78,7 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         <button
           onClick={handleTranslate}
           disabled={isTranslating || !params.promptKo}
-          className="mt-1 flex items-center gap-1 rounded px-2 py-1 text-xs
+          className="nodrag mt-1 flex items-center gap-1 rounded px-2 py-1 text-xs
             bg-secondary text-secondary-foreground hover:bg-secondary/80
             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
@@ -83,7 +99,7 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         <textarea
           value={params.prompt}
           onChange={(e) => setParams({ prompt: e.target.value })}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+          className="nodrag w-full rounded-md border border-input bg-background px-3 py-2 text-sm
             resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           rows={3}
           placeholder="Enter prompt in English..."
@@ -91,7 +107,7 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         <button
           onClick={handleEnhance}
           disabled={isEnhancing || !params.prompt}
-          className="mt-1 flex items-center gap-1 rounded px-2 py-1 text-xs
+          className="nodrag mt-1 flex items-center gap-1 rounded px-2 py-1 text-xs
             bg-primary text-primary-foreground hover:bg-primary/90
             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
@@ -109,8 +125,11 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         type="source"
         position={Position.Right}
         id="output"
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-green-500 !w-3 !h-3"
       />
+      <div className="absolute right-2 top-[50%] -translate-y-1/2 text-[9px] text-green-500 font-medium">
+        Prompt
+      </div>
     </div>
   )
 }

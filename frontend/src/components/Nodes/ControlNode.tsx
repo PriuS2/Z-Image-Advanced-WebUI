@@ -1,5 +1,5 @@
 import { memo, useState, useRef } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Upload, X } from 'lucide-react'
 import { generationApi } from '../../api/generation'
@@ -12,12 +12,14 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
   const { setParams } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
+  const { deleteElements } = useReactFlow()
   
   const [controlType, setControlType] = useState('canny')
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractedImage, setExtractedImage] = useState<string | null>(null)
   const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
+  const [isHovered, setIsHovered] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,14 +63,31 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
   }
 
   return (
-    <div className={`min-w-[200px] rounded-lg border bg-card p-4 ${selected ? 'border-primary' : 'border-border'}`}>
+    <div 
+      className={`min-w-[260px] rounded-lg border bg-card p-4 pl-12 pr-16 relative ${selected ? 'border-primary' : 'border-border'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Delete button */}
+      {isHovered && (
+        <button
+          onClick={() => deleteElements({ nodes: [{ id }] })}
+          className="absolute -right-2 -top-2 z-10 rounded-full bg-destructive p-1 text-destructive-foreground 
+            hover:bg-destructive/80 transition-colors shadow-md"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       {/* Input handle */}
       <Handle
         type="target"
         position={Position.Left}
         id="input"
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-blue-500 !w-3 !h-3"
       />
+      <div className="absolute left-2 top-[50%] -translate-y-1/2 text-[9px] text-blue-500 font-medium">
+        Image
+      </div>
       
       <div className="mb-3 text-sm font-semibold">{t('nodes.control')}</div>
       
@@ -83,7 +102,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
             />
             <button
               onClick={clearImage}
-              className="absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground"
+              className="nodrag absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground"
             >
               <X className="h-3 w-3" />
             </button>
@@ -100,7 +119,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
               type="file"
               accept="image/*"
               onChange={handleImageUpload}
-              className="absolute inset-0 cursor-pointer opacity-0"
+              className="nodrag absolute inset-0 cursor-pointer opacity-0"
             />
           </div>
         )}
@@ -114,7 +133,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
         <select
           value={controlType}
           onChange={(e) => setControlType(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+          className="nodrag w-full rounded-md border border-input bg-background px-3 py-2 text-sm
             focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {controlTypes.map((type) => (
@@ -129,7 +148,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
       <button
         onClick={handleExtract}
         disabled={isExtracting || !sourceImage}
-        className="w-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm
+        className="nodrag w-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm
           bg-secondary text-secondary-foreground hover:bg-secondary/80
           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
@@ -154,8 +173,11 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
         type="source"
         position={Position.Right}
         id="output"
-        className="!bg-primary !w-3 !h-3"
+        className="!bg-orange-500 !w-3 !h-3"
       />
+      <div className="absolute right-2 top-[50%] -translate-y-1/2 text-[9px] text-orange-500 font-medium">
+        Control
+      </div>
     </div>
   )
 }

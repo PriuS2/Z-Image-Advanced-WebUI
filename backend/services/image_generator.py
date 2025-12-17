@@ -59,6 +59,54 @@ class ImageGeneratorService:
         }
         return dtype_map.get(self.config.optimization.weight_dtype, torch.bfloat16)
     
+    def _find_controlnet_path(self) -> Optional[str]:
+        """Find ControlNet safetensors file.
+        
+        Searches for the controlnet file in multiple possible locations:
+        1. Direct file: models/Personalized_Model/Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors
+        2. In folder: models/Personalized_Model/Z-Image-Turbo-Fun-Controlnet-Union-2.0/*.safetensors
+        
+        Returns:
+            Path to the safetensors file or None if not found.
+        """
+        base_path = self.config.models.controlnet_path
+        controlnet_name = "Z-Image-Turbo-Fun-Controlnet-Union-2.0"
+        
+        # 방법 1: 직접 파일 경로
+        direct_file = os.path.join(base_path, f"{controlnet_name}.safetensors")
+        if os.path.isfile(direct_file):
+            logger.info(f"Found ControlNet file directly: {direct_file}")
+            return direct_file
+        
+        # 방법 2: 폴더 안에서 safetensors 파일 찾기
+        folder_path = os.path.join(base_path, controlnet_name)
+        if os.path.isdir(folder_path):
+            # 폴더 안에서 .safetensors 파일 찾기
+            for filename in os.listdir(folder_path):
+                if filename.endswith(".safetensors"):
+                    found_path = os.path.join(folder_path, filename)
+                    logger.info(f"Found ControlNet file in folder: {found_path}")
+                    return found_path
+            
+            # safetensors 파일이 없으면 폴더 자체를 반환 (diffusers 형식일 수 있음)
+            logger.info(f"ControlNet folder found (diffusers format): {folder_path}")
+            return folder_path
+        
+        # 방법 3: 폴더 내 모든 하위 폴더에서 검색
+        if os.path.isdir(base_path):
+            for item in os.listdir(base_path):
+                item_path = os.path.join(base_path, item)
+                if os.path.isdir(item_path) and "controlnet" in item.lower():
+                    # 폴더 안에서 safetensors 찾기
+                    for filename in os.listdir(item_path):
+                        if filename.endswith(".safetensors"):
+                            found_path = os.path.join(item_path, filename)
+                            logger.info(f"Found ControlNet file: {found_path}")
+                            return found_path
+        
+        logger.warning(f"ControlNet not found in {base_path}")
+        return None
+    
     async def load_model(
         self, 
         model_path: Optional[str] = None,
@@ -79,10 +127,9 @@ class ImageGeneratorService:
         
         try:
             model_path = model_path or self.config.models.base_model_path
-            controlnet_path = os.path.join(
-                self.config.models.controlnet_path,
-                "Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors"
-            )
+            
+            # ControlNet 경로 찾기 - 폴더 또는 파일 모두 지원
+            controlnet_path = self._find_controlnet_path()
             config_path = "config/z_image/z_image_control_2.0.yaml"
             
             logger.info(f"Loading model from: {model_path}")
@@ -144,13 +191,29 @@ class ImageGeneratorService:
                 await progress_callback(35, "Loading ControlNet weights...")
             
             # Load ControlNet Union weights
-            if os.path.exists(controlnet_path):
-                from safetensors.torch import load_file
-                state_dict = await asyncio.to_thread(load_file, controlnet_path)
-                m, u = self.transformer.load_state_dict(state_dict, strict=False)
-                logger.info(f"ControlNet loaded - missing keys: {len(m)}, unexpected keys: {len(u)}")
+            if controlnet_path and os.path.exists(controlnet_path):
+                if os.path.isfile(controlnet_path) and controlnet_path.endswith(".safetensors"):
+                    # 단일 safetensors 파일
+                    from safetensors.torch import load_file
+                    state_dict = await asyncio.to_thread(load_file, controlnet_path)
+                    m, u = self.transformer.load_state_dict(state_dict, strict=False)
+                    logger.info(f"ControlNet loaded from file - missing keys: {len(m)}, unexpected keys: {len(u)}")
+                elif os.path.isdir(controlnet_path):
+                    # 폴더인 경우 - 폴더 안의 safetensors 파일들을 찾아서 로드
+                    loaded = False
+                    for filename in os.listdir(controlnet_path):
+                        if filename.endswith(".safetensors"):
+                            file_path = os.path.join(controlnet_path, filename)
+                            from safetensors.torch import load_file
+                            state_dict = await asyncio.to_thread(load_file, file_path)
+                            m, u = self.transformer.load_state_dict(state_dict, strict=False)
+                            logger.info(f"ControlNet loaded from {filename} - missing keys: {len(m)}, unexpected keys: {len(u)}")
+                            loaded = True
+                            break
+                    if not loaded:
+                        logger.warning(f"No safetensors file found in ControlNet folder: {controlnet_path}")
             else:
-                logger.warning(f"ControlNet file not found: {controlnet_path}")
+                logger.warning(f"ControlNet not found: {controlnet_path}")
             
             if progress_callback:
                 await progress_callback(50, "Loading VAE...")
@@ -344,23 +407,32 @@ class ImageGeneratorService:
                     )
                 return callback_kwargs
             
+            # Build pipeline kwargs - only include non-None values
+            pipe_kwargs = {
+                "prompt": params.prompt,
+                "negative_prompt": " ",
+                "height": params.height,
+                "width": params.width,
+                "generator": generator,
+                "guidance_scale": params.guidance_scale,
+                "num_inference_steps": params.num_inference_steps,
+                "control_context_scale": params.control_context_scale,
+                "callback_on_step_end": callback_on_step_end,
+            }
+            
+            # Only add control_image if it exists
+            if control_image is not None:
+                pipe_kwargs["control_image"] = control_image
+            
+            # Only add inpaint parameters if both image and mask exist
+            if inpaint_image is not None and mask_image is not None:
+                pipe_kwargs["image"] = inpaint_image
+                pipe_kwargs["mask_image"] = mask_image
+            
             # Generate
             with torch.no_grad():
                 result = await asyncio.to_thread(
-                    lambda: self.pipe(
-                        prompt=params.prompt,
-                        negative_prompt=" ",
-                        height=params.height,
-                        width=params.width,
-                        generator=generator,
-                        guidance_scale=params.guidance_scale,
-                        control_image=control_image,
-                        image=inpaint_image,
-                        mask_image=mask_image,
-                        num_inference_steps=params.num_inference_steps,
-                        control_context_scale=params.control_context_scale,
-                        callback_on_step_end=callback_on_step_end,
-                    ).images
+                    lambda: self.pipe(**pipe_kwargs).images
                 )
             
             if result and len(result) > 0:

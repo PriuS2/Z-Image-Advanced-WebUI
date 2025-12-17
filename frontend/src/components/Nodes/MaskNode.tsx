@@ -1,15 +1,17 @@
 import { memo, useState } from 'react'
-import { Handle, Position, NodeProps } from 'reactflow'
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Paintbrush, Upload, X } from 'lucide-react'
 import { MaskEditor } from '../MaskEditor/MaskEditor'
 
 function MaskNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
+  const { deleteElements } = useReactFlow()
   const [mode, setMode] = useState<'draw' | 'upload'>('draw')
   const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [maskImage, setMaskImage] = useState<string | null>(null)
   const [showEditor, setShowEditor] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -35,14 +37,31 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
 
   return (
     <>
-      <div className={`min-w-[200px] rounded-lg border bg-card p-4 ${selected ? 'border-primary' : 'border-border'}`}>
+      <div 
+        className={`min-w-[260px] rounded-lg border bg-card p-4 pl-12 pr-14 relative ${selected ? 'border-primary' : 'border-border'}`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* Delete button */}
+        {isHovered && (
+          <button
+            onClick={() => deleteElements({ nodes: [{ id }] })}
+            className="absolute -right-2 -top-2 z-10 rounded-full bg-destructive p-1 text-destructive-foreground 
+              hover:bg-destructive/80 transition-colors shadow-md"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
         {/* Input handle */}
         <Handle
           type="target"
           position={Position.Left}
           id="input"
-          className="!bg-primary !w-3 !h-3"
+          className="!bg-blue-500 !w-3 !h-3"
         />
+        <div className="absolute left-2 top-[50%] -translate-y-1/2 text-[9px] text-blue-500 font-medium">
+          Image
+        </div>
         
         <div className="mb-3 text-sm font-semibold">{t('nodes.mask')}</div>
         
@@ -50,7 +69,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
         <div className="mb-3 flex gap-1">
           <button
             onClick={() => setMode('draw')}
-            className={`flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors
+            className={`nodrag flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors
               ${mode === 'draw' 
                 ? 'bg-primary text-primary-foreground' 
                 : 'bg-secondary hover:bg-secondary/80'
@@ -61,7 +80,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
           </button>
           <button
             onClick={() => setMode('upload')}
-            className={`flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors
+            className={`nodrag flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors
               ${mode === 'upload' 
                 ? 'bg-primary text-primary-foreground' 
                 : 'bg-secondary hover:bg-secondary/80'
@@ -84,13 +103,13 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
                 />
                 <button
                   onClick={() => setSourceImage(null)}
-                  className="absolute -right-2 -top-2 rounded-full bg-destructive p-1"
+                  className="nodrag absolute -right-2 -top-2 rounded-full bg-destructive p-1"
                 >
                   <X className="h-3 w-3 text-white" />
                 </button>
                 <button
                   onClick={() => setShowEditor(true)}
-                  className="mt-2 w-full rounded-md bg-primary py-1.5 text-xs text-primary-foreground"
+                  className="nodrag mt-2 w-full rounded-md bg-primary py-1.5 text-xs text-primary-foreground"
                 >
                   Edit Mask
                 </button>
@@ -106,7 +125,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
                   type="file"
                   accept="image/*"
                   onChange={handleImageUpload}
-                  className="absolute inset-0 cursor-pointer opacity-0"
+                  className="nodrag absolute inset-0 cursor-pointer opacity-0"
                 />
               </div>
             )}
@@ -122,7 +141,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
                 />
                 <button
                   onClick={() => setMaskImage(null)}
-                  className="absolute -right-2 -top-2 rounded-full bg-destructive p-1"
+                  className="nodrag absolute -right-2 -top-2 rounded-full bg-destructive p-1"
                 >
                   <X className="h-3 w-3 text-white" />
                 </button>
@@ -138,7 +157,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
                   type="file"
                   accept="image/*"
                   onChange={handleMaskUpload}
-                  className="absolute inset-0 cursor-pointer opacity-0"
+                  className="nodrag absolute inset-0 cursor-pointer opacity-0"
                 />
               </>
             )}
@@ -150,8 +169,11 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
           type="source"
           position={Position.Right}
           id="output"
-          className="!bg-primary !w-3 !h-3"
+          className="!bg-pink-500 !w-3 !h-3"
         />
+        <div className="absolute right-2 top-[50%] -translate-y-1/2 text-[9px] text-pink-500 font-medium">
+          Mask
+        </div>
       </div>
 
       {/* Mask editor modal */}

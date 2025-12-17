@@ -95,7 +95,17 @@ class ModelManager:
         Returns:
             Path to downloaded model.
         """
-        os.makedirs(destination, exist_ok=True)
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Extract model name from repo_id (e.g., "alibaba-pai/Z-Image-Turbo" -> "Z-Image-Turbo")
+        model_name = repo_id.split("/")[-1]
+        
+        # Create full destination path with model name as subfolder
+        full_destination = os.path.join(destination, model_name)
+        os.makedirs(full_destination, exist_ok=True)
+        
+        logger.info(f"Downloading {repo_id} to {full_destination}")
         
         try:
             if filename:
@@ -104,17 +114,22 @@ class ModelManager:
                     hf_hub_download,
                     repo_id=repo_id,
                     filename=filename,
-                    local_dir=destination,
+                    local_dir=full_destination,
+                    local_dir_use_symlinks=False,  # Actually copy files, don't use symlinks
                 )
             else:
                 # Download entire repository
                 local_path = await asyncio.to_thread(
                     snapshot_download,
                     repo_id=repo_id,
-                    local_dir=destination,
+                    local_dir=full_destination,
+                    local_dir_use_symlinks=False,  # Actually copy files, don't use symlinks
                 )
+            
+            logger.info(f"Download completed: {local_path}")
             return local_path
         except Exception as e:
+            logger.error(f"Download failed: {e}")
             raise RuntimeError(f"Failed to download model: {e}")
     
     async def load_model(
