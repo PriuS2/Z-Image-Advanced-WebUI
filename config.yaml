@@ -1,0 +1,65 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+
+database:
+  url: "sqlite+aiosqlite:///./zimage.db"
+
+jwt:
+  secret_key: "your-secret-key-change-in-production"
+  algorithm: "HS256"
+  access_token_expire_minutes: 1440  # 24 hours
+
+models:
+  base_model_path: "models/Diffusion_Transformer/Z-Image-Turbo/"
+  controlnet_path: "models/Personalized_Model/"
+  lora_path: "models/Lora/"
+  annotator_path: "models/Annotators/"
+  outputs_path: "outputs/"
+
+optimization:
+  gpu_memory_mode: "model_cpu_offload_and_qfloat8"
+  weight_dtype: "bfloat16"
+  attention_type: "FLASH_ATTENTION"
+  compile_dit: false
+
+generation_defaults:
+  width: 1024
+  height: 1024
+  num_inference_steps: 25
+  guidance_scale: 0.0
+  control_context_scale: 0.75
+  sampler: "Flow"
+
+llm:
+  default_provider: "openai"
+  providers:
+    openai:
+      api_key: ""
+      model: "gpt-4o-mini"
+    claude:
+      api_key: ""
+      model: "claude-3-sonnet-20240229"
+    gemini:
+      api_key: ""
+      model: "gemini-1.5-flash"
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "llama3"
+  
+  system_prompts:
+    translate:
+      default: |
+        You are a professional translator specializing in image generation prompts.
+        Translate the given Korean text to English, optimizing it for AI image generation.
+        Keep the translation natural and descriptive. Only output the translated text.
+      custom: ""
+    enhance:
+      default: |
+        You are an expert AI art prompt engineer.
+        Enhance the given prompt to be more detailed and effective for image generation.
+        Add descriptive elements like lighting, style, quality tags, and artistic details.
+        Keep the core meaning but make it more vivid and specific.
+        Only output the enhanced prompt.
+      custom: ""

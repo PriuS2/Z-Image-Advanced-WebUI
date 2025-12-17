@@ -1,0 +1,125 @@
+{
+  "app": {
+    "title": "Z-Image Advanced WebUI",
+    "subtitle": "AI 이미지 생성"
+  },
+  "tabs": {
+    "generate": "생성",
+    "gallery": "갤러리",
+    "history": "히스토리",
+    "queue": "배치 큐",
+    "workflow": "워크플로우",
+    "settings": "설정"
+  },
+  "auth": {
+    "login": "로그인",
+    "register": "회원가입",
+    "username": "사용자명",
+    "password": "비밀번호",
+    "loginButton": "로그인",
+    "registerButton": "회원가입",
+    "logout": "로그아웃",
+    "noAccount": "계정이 없으신가요?",
+    "hasAccount": "이미 계정이 있으신가요?"
+  },
+  "generate": {
+    "title": "이미지 생성",
+    "promptKo": "프롬프트 (한국어)",
+    "promptEn": "프롬프트 (영어)",
+    "translate": "번역",
+    "enhance": "향상",
+    "generate": "생성",
+    "width": "너비",
+    "height": "높이",
+    "steps": "스텝",
+    "seed": "시드",
+    "randomSeed": "랜덤 시드",
+    "controlScale": "Control 강도",
+    "sampler": "샘플러",
+    "controlType": "Control 타입",
+    "uploadImage": "이미지 업로드",
+    "extractControl": "Control 추출"
+  },
+  "gallery": {
+    "title": "갤러리",
+    "noImages": "생성된 이미지가 없습니다",
+    "favorite": "즐겨찾기",
+    "delete": "삭제",
+    "download": "다운로드",
+    "regenerate": "재생성",
+    "loadSettings": "설정 불러오기"
+  },
+  "history": {
+    "title": "프롬프트 히스토리",
+    "noHistory": "히스토리가 없습니다",
+    "search": "검색..."
+  },
+  "queue": {
+    "title": "배치 큐",
+    "pending": "대기 중",
+    "running": "실행 중",
+    "completed": "완료",
+    "failed": "실패",
+    "cancel": "취소",
+    "noTasks": "작업이 없습니다"
+  },
+  "workflow": {
+    "title": "워크플로우",
+    "save": "저장",
+    "load": "불러오기",
+    "new": "새 워크플로우",
+    "name": "이름",
+    "description": "설명",
+    "noWorkflows": "저장된 워크플로우가 없습니다"
+  },
+  "settings": {
+    "title": "설정",
+    "general": "일반",
+    "models": "모델",
+    "llm": "LLM",
+    "theme": "테마",
+    "language": "언어",
+    "dark": "다크",
+    "light": "라이트",
+    "realtimePreview": "실시간 미리보기",
+    "loadModel": "모델 로드",
+    "unloadModel": "모델 언로드",
+    "downloadModel": "모델 다운로드",
+    "gpuMemoryMode": "GPU 메모리 모드",
+    "weightDtype": "가중치 타입",
+    "llmProvider": "LLM 제공자",
+    "apiKey": "API 키",
+    "model": "모델",
+    "translatePrompt": "번역 프롬프트",
+    "enhancePrompt": "향상 프롬프트",
+    "reset": "초기화",
+    "save": "저장"
+  },
+  "nodes": {
+    "prompt": "프롬프트",
+    "image": "이미지 입력",
+    "control": "Control 추출",
+    "mask": "마스크",
+    "parameters": "파라미터",
+    "lora": "LoRA",
+    "generate": "생성",
+    "preview": "미리보기"
+  },
+  "common": {
+    "loading": "로딩 중...",
+    "error": "오류",
+    "success": "성공",
+    "cancel": "취소",
+    "confirm": "확인",
+    "save": "저장",
+    "delete": "삭제",
+    "edit": "편집",
+    "close": "닫기"
+  },
+  "errors": {
+    "loginFailed": "로그인 실패",
+    "registerFailed": "회원가입 실패",
+    "networkError": "네트워크 오류",
+    "generationFailed": "이미지 생성 실패"
+  }
+}

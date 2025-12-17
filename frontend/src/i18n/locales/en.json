@@ -1,0 +1,125 @@
+{
+  "app": {
+    "title": "Z-Image Advanced WebUI",
+    "subtitle": "AI Image Generation"
+  },
+  "tabs": {
+    "generate": "Generate",
+    "gallery": "Gallery",
+    "history": "History",
+    "queue": "Queue",
+    "workflow": "Workflow",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "username": "Username",
+    "password": "Password",
+    "loginButton": "Login",
+    "registerButton": "Register",
+    "logout": "Logout",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "generate": {
+    "title": "Generate Image",
+    "promptKo": "Prompt (Korean)",
+    "promptEn": "Prompt (English)",
+    "translate": "Translate",
+    "enhance": "Enhance",
+    "generate": "Generate",
+    "width": "Width",
+    "height": "Height",
+    "steps": "Steps",
+    "seed": "Seed",
+    "randomSeed": "Random Seed",
+    "controlScale": "Control Scale",
+    "sampler": "Sampler",
+    "controlType": "Control Type",
+    "uploadImage": "Upload Image",
+    "extractControl": "Extract Control"
+  },
+  "gallery": {
+    "title": "Gallery",
+    "noImages": "No images generated",
+    "favorite": "Favorite",
+    "delete": "Delete",
+    "download": "Download",
+    "regenerate": "Regenerate",
+    "loadSettings": "Load Settings"
+  },
+  "history": {
+    "title": "Prompt History",
+    "noHistory": "No history",
+    "search": "Search..."
+  },
+  "queue": {
+    "title": "Batch Queue",
+    "pending": "Pending",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancel": "Cancel",
+    "noTasks": "No tasks"
+  },
+  "workflow": {
+    "title": "Workflow",
+    "save": "Save",
+    "load": "Load",
+    "new": "New Workflow",
+    "name": "Name",
+    "description": "Description",
+    "noWorkflows": "No saved workflows"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "models": "Models",
+    "llm": "LLM",
+    "theme": "Theme",
+    "language": "Language",
+    "dark": "Dark",
+    "light": "Light",
+    "realtimePreview": "Realtime Preview",
+    "loadModel": "Load Model",
+    "unloadModel": "Unload Model",
+    "downloadModel": "Download Model",
+    "gpuMemoryMode": "GPU Memory Mode",
+    "weightDtype": "Weight Dtype",
+    "llmProvider": "LLM Provider",
+    "apiKey": "API Key",
+    "model": "Model",
+    "translatePrompt": "Translate Prompt",
+    "enhancePrompt": "Enhance Prompt",
+    "reset": "Reset",
+    "save": "Save"
+  },
+  "nodes": {
+    "prompt": "Prompt",
+    "image": "Image Input",
+    "control": "Control Extractor",
+    "mask": "Mask",
+    "parameters": "Parameters",
+    "lora": "LoRA",
+    "generate": "Generate",
+    "preview": "Preview"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close"
+  },
+  "errors": {
+    "loginFailed": "Login failed",
+    "registerFailed": "Registration failed",
+    "networkError": "Network error",
+    "generationFailed": "Image generation failed"
+  }
+}
