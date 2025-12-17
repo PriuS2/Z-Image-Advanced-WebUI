@@ -90,3 +90,7 @@ htmlcov/
 # ===== mypy =====
 .mypy_cache/
 
+# ===== nodejs =====
+frontend/package-lock.json
+frontend/node_modules/*
+
