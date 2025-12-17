@@ -1,12 +1,19 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { useTranslation } from 'react-i18next'
-import { Download, Heart, RotateCcw, Image as ImageIcon } from 'lucide-react'
+import { Download, Heart, RotateCcw, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { useGenerationStore } from '../../stores/generationStore'
+import { galleryApi } from '../../api/gallery'
+import { generationApi } from '../../api/generation'
+import { useToast } from '../../hooks/useToast'
 
 function PreviewNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
-  const { lastGeneratedImage, progress } = useGenerationStore()
+  const { lastGeneratedImage, lastGeneratedImageId, progress, params, startGeneration } = useGenerationStore()
+  const { error: toastError, success: toastSuccess } = useToast()
+  
+  const [isFavorite, setIsFavorite] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
 
   const handleDownload = () => {
     if (lastGeneratedImage) {
@@ -14,6 +21,43 @@ function PreviewNodeComponent({ id, selected }: NodeProps) {
       link.href = lastGeneratedImage
       link.download = `generated_${Date.now()}.png`
       link.click()
+    }
+  }
+
+  const handleFavorite = async () => {
+    if (lastGeneratedImageId) {
+      try {
+        const result = await galleryApi.toggleFavorite(lastGeneratedImageId)
+        setIsFavorite(result.is_favorite)
+        toastSuccess(t('common.success'), result.is_favorite ? 'Added to favorites' : 'Removed from favorites')
+      } catch (err) {
+        toastError(t('common.error'), String(err))
+      }
+    }
+  }
+
+  const handleRegenerate = async () => {
+    if (!params.prompt) return
+    
+    setIsRegenerating(true)
+    try {
+      const task = await generationApi.generate({
+        prompt: params.prompt,
+        prompt_ko: params.promptKo,
+        width: params.width,
+        height: params.height,
+        num_inference_steps: params.steps,
+        seed: null, // New random seed
+        control_context_scale: params.controlScale,
+        sampler: params.sampler,
+        control_type: params.controlType,
+      })
+      startGeneration(task.id)
+      toastSuccess(t('common.success'), `Task ${task.id} started`)
+    } catch (err) {
+      toastError(t('errors.generationFailed'), String(err))
+    } finally {
+      setIsRegenerating(false)
     }
   }
 
@@ -40,16 +84,23 @@ function PreviewNodeComponent({ id, selected }: NodeProps) {
               <Download className="h-4 w-4" />
             </button>
             <button
+              onClick={handleFavorite}
               className="rounded p-1 hover:bg-accent transition-colors"
               title={t('gallery.favorite')}
             >
-              <Heart className="h-4 w-4" />
+              <Heart className={`h-4 w-4 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
             </button>
             <button
-              className="rounded p-1 hover:bg-accent transition-colors"
+              onClick={handleRegenerate}
+              disabled={isRegenerating}
+              className="rounded p-1 hover:bg-accent transition-colors disabled:opacity-50"
               title={t('gallery.regenerate')}
             >
+              {isRegenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
               <RotateCcw className="h-4 w-4" />
+              )}
             </button>
           </div>
         )}

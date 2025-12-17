@@ -5,6 +5,7 @@ import { MainContent } from './components/Layout/MainContent'
 import { Toaster } from './components/ui/toaster'
 import { useAuthStore } from './stores/authStore'
 import { LoginDialog } from './components/Layout/LoginDialog'
+import { useWebSocket } from './hooks/useWebSocket'
 
 export type TabType = 'generate' | 'gallery' | 'history' | 'queue' | 'workflow' | 'settings'
 
@@ -12,6 +13,9 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('generate')
   const { isAuthenticated, checkAuth } = useAuthStore()
   const { i18n } = useTranslation()
+  
+  // Initialize WebSocket connection for real-time updates
+  useWebSocket()
 
   useEffect(() => {
     // Check authentication on mount

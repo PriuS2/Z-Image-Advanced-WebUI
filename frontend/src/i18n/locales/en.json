@@ -93,7 +93,13 @@
     "translatePrompt": "Translate Prompt",
     "enhancePrompt": "Enhance Prompt",
     "reset": "Reset",
-    "save": "Save"
+    "save": "Save",
+    "baseModel": "Base Model",
+    "loaded": "Loaded",
+    "notLoaded": "Not Loaded",
+    "modelLoaded": "Model loaded successfully",
+    "modelUnloaded": "Model unloaded successfully",
+    "modelDownloaded": "Model download completed"
   },
   "nodes": {
     "prompt": "Prompt",

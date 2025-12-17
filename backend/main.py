@@ -1,6 +1,7 @@
 """Z-Image Advanced WebUI - FastAPI Backend."""
 import os
 import sys
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,8 +15,9 @@ sys.path.insert(0, str(project_root))
 
 from backend.config import get_config
 from backend.api import api_router
-from backend.db import init_db
+from backend.db import init_db, AsyncSessionLocal
 from backend.websocket import websocket_endpoint
+from backend.services.queue_manager import get_queue_manager
 
 
 @asynccontextmanager
@@ -36,10 +38,27 @@ async def lifespan(app: FastAPI):
     os.makedirs("masks", exist_ok=True)
     print("[OK] Output directories created")
     
+    # Start queue worker
+    queue_manager = get_queue_manager()
+    worker_task = asyncio.create_task(start_queue_worker(queue_manager))
+    print("[OK] Queue worker started")
+    
     yield
     
     # Shutdown
     print("[END] Shutting down Z-Image Advanced WebUI...")
+    await queue_manager.stop_worker()
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+
+
+async def start_queue_worker(queue_manager):
+    """Start the queue worker with a new database session."""
+    async with AsyncSessionLocal() as db:
+        await queue_manager.start_worker(db)
 
 
 # Create FastAPI app

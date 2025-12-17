@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Heart, Trash2, Download, RotateCcw, Settings, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { galleryApi } from '../../api/gallery'
 import { useToast } from '../../hooks/useToast'
+import { useGenerationStore } from '../../stores/generationStore'
 
 interface GalleryImage {
   id: number
@@ -17,7 +18,8 @@ interface GalleryImage {
 
 export function GalleryTab() {
   const { t } = useTranslation()
-  const { error: toastError } = useToast()
+  const { error: toastError, success: toastSuccess } = useToast()
+  const { setParams, startGeneration } = useGenerationStore()
   
   const [images, setImages] = useState<GalleryImage[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -25,6 +27,9 @@ export function GalleryTab() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [favoriteOnly, setFavoriteOnly] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false)
 
   const loadImages = async () => {
     setIsLoading(true)
@@ -65,6 +70,54 @@ export function GalleryTab() {
       }
     } catch (err) {
       toastError(t('errors.networkError'), String(err))
+    }
+  }
+
+  const handleDownload = async (imageId: number) => {
+    setIsDownloading(true)
+    try {
+      await galleryApi.downloadImage(imageId)
+      toastSuccess(t('common.success'), t('gallery.download'))
+    } catch (err) {
+      toastError(t('errors.networkError'), String(err))
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleRegenerate = async (imageId: number) => {
+    setIsRegenerating(true)
+    try {
+      const result = await galleryApi.regenerate(imageId)
+      startGeneration(result.task_id)
+      toastSuccess(t('common.success'), `Task ${result.task_id} started`)
+    } catch (err) {
+      toastError(t('errors.networkError'), String(err))
+    } finally {
+      setIsRegenerating(false)
+    }
+  }
+
+  const handleLoadSettings = async (imageId: number) => {
+    setIsLoadingSettings(true)
+    try {
+      const settings = await galleryApi.loadSettings(imageId)
+      setParams({
+        prompt: settings.prompt as string || '',
+        promptKo: settings.prompt_ko as string || '',
+        width: settings.width as number || 1024,
+        height: settings.height as number || 1024,
+        steps: settings.num_inference_steps as number || 25,
+        seed: settings.seed as number | null,
+        controlScale: settings.control_context_scale as number || 0.75,
+        sampler: settings.sampler as string || 'Flow',
+        controlType: settings.control_type as string | null,
+      })
+      toastSuccess(t('common.success'), t('gallery.loadSettings'))
+    } catch (err) {
+      toastError(t('errors.networkError'), String(err))
+    } finally {
+      setIsLoadingSettings(false)
     }
   }
 
@@ -188,18 +241,42 @@ export function GalleryTab() {
           />
           
           <div className="mb-4 flex gap-2">
-            <button className="flex-1 flex items-center justify-center gap-1 rounded-md bg-secondary py-2 text-sm hover:bg-secondary/80">
+            <button 
+              onClick={() => handleDownload(selectedImage.id)}
+              disabled={isDownloading}
+              className="flex-1 flex items-center justify-center gap-1 rounded-md bg-secondary py-2 text-sm hover:bg-secondary/80 disabled:opacity-50"
+            >
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
               <Download className="h-4 w-4" />
+              )}
               {t('gallery.download')}
             </button>
-            <button className="flex-1 flex items-center justify-center gap-1 rounded-md bg-secondary py-2 text-sm hover:bg-secondary/80">
+            <button 
+              onClick={() => handleRegenerate(selectedImage.id)}
+              disabled={isRegenerating}
+              className="flex-1 flex items-center justify-center gap-1 rounded-md bg-secondary py-2 text-sm hover:bg-secondary/80 disabled:opacity-50"
+            >
+              {isRegenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
               <RotateCcw className="h-4 w-4" />
+              )}
               {t('gallery.regenerate')}
             </button>
           </div>
           
-          <button className="w-full flex items-center justify-center gap-1 rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90">
+          <button 
+            onClick={() => handleLoadSettings(selectedImage.id)}
+            disabled={isLoadingSettings}
+            className="w-full flex items-center justify-center gap-1 rounded-md bg-primary py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {isLoadingSettings ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
             <Settings className="h-4 w-4" />
+            )}
             {t('gallery.loadSettings')}
           </button>
           

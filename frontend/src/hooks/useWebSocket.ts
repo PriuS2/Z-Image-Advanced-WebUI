@@ -80,7 +80,15 @@ export function useWebSocket() {
           isGenerating: false,
         })
         if (message.image_path) {
-          setLastGeneratedImage(message.image_path)
+          // Convert file path to URL - handle both Windows and Unix paths
+          let imagePath = message.image_path.replace(/\\/g, '/')
+          // If it starts with outputs/, make it an absolute URL
+          if (imagePath.startsWith('outputs/')) {
+            imagePath = `/${imagePath}`
+          } else if (!imagePath.startsWith('/') && !imagePath.startsWith('http')) {
+            imagePath = `/${imagePath}`
+          }
+          setLastGeneratedImage(imagePath)
         }
         break
 

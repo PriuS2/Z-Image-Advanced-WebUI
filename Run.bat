@@ -36,7 +36,7 @@ if not exist "controls" mkdir controls
 if not exist "masks" mkdir masks
 
 echo [1/2] Starting Backend Server...
-start "Z-Image Backend" cmd /k "cd /d %~dp0 && call venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+start "Z-Image Backend" cmd /k "cd /d %~dp0 && call venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload"
 
 :: Wait for backend to start
 echo Waiting for backend to initialize...
@@ -50,9 +50,9 @@ echo ============================================
 echo    Servers are starting...
 echo ============================================
 echo.
-echo    Backend:  http://localhost:8000
+echo    Backend:  http://localhost:8080
 echo    Frontend: http://localhost:3000
-echo    API Docs: http://localhost:8000/docs
+echo    API Docs: http://localhost:8080/docs
 echo.
 echo    Press any key to open the WebUI...
 echo ============================================

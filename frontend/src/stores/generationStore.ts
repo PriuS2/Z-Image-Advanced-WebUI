@@ -12,6 +12,7 @@ interface GenerationParams {
   sampler: string
   controlType: string | null
   controlImage: string | null
+  controlImagePath: string | null
   maskImage: string | null
 }
 
@@ -39,13 +40,14 @@ interface GenerationState {
   
   // Generated result
   lastGeneratedImage: string | null
+  lastGeneratedImageId: number | null
   
   // Actions
   setParams: (params: Partial<GenerationParams>) => void
   setNodes: (nodes: Node[]) => void
   setEdges: (edges: Edge[]) => void
   setProgress: (progress: Partial<GenerationProgress>) => void
-  setLastGeneratedImage: (image: string | null) => void
+  setLastGeneratedImage: (image: string | null, imageId?: number | null) => void
   resetProgress: () => void
   startGeneration: (taskId: number) => void
 }
@@ -61,6 +63,7 @@ const defaultParams: GenerationParams = {
   sampler: 'Flow',
   controlType: null,
   controlImage: null,
+  controlImagePath: null,
   maskImage: null,
 }
 
@@ -81,6 +84,7 @@ export const useGenerationStore = create<GenerationState>()((set) => ({
   edges: [],
   progress: defaultProgress,
   lastGeneratedImage: null,
+  lastGeneratedImageId: null,
 
   setParams: (newParams) =>
     set((state) => ({
@@ -96,7 +100,10 @@ export const useGenerationStore = create<GenerationState>()((set) => ({
       progress: { ...state.progress, ...newProgress },
     })),
 
-  setLastGeneratedImage: (image) => set({ lastGeneratedImage: image }),
+  setLastGeneratedImage: (image, imageId = null) => set({ 
+    lastGeneratedImage: image,
+    lastGeneratedImageId: imageId,
+  }),
 
   resetProgress: () => set({ progress: defaultProgress }),
 

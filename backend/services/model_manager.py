@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Callable, Any
 from dataclasses import dataclass
 
-from huggingface_hub import hf_hub_download, scan_cache_dir
+from huggingface_hub import hf_hub_download, snapshot_download, scan_cache_dir
 
 from backend.config import get_config
 
@@ -98,13 +98,21 @@ class ModelManager:
         os.makedirs(destination, exist_ok=True)
         
         try:
-            # Download from HuggingFace
-            local_path = await asyncio.to_thread(
-                hf_hub_download,
-                repo_id=repo_id,
-                filename=filename,
-                local_dir=destination,
-            )
+            if filename:
+                # Download specific file
+                local_path = await asyncio.to_thread(
+                    hf_hub_download,
+                    repo_id=repo_id,
+                    filename=filename,
+                    local_dir=destination,
+                )
+            else:
+                # Download entire repository
+                local_path = await asyncio.to_thread(
+                    snapshot_download,
+                    repo_id=repo_id,
+                    local_dir=destination,
+                )
             return local_path
         except Exception as e:
             raise RuntimeError(f"Failed to download model: {e}")
@@ -127,9 +135,33 @@ class ModelManager:
         Returns:
             True if successful.
         """
-        # TODO: Implement actual model loading
-        self._loaded_models[model_type] = model_path
-        return True
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if model_type == "base":
+            # Use ImageGeneratorService for base model
+            from backend.services.image_generator import get_generator
+            
+            generator = get_generator()
+            
+            # Update config if parameters provided
+            if gpu_memory_mode:
+                self.config.optimization.gpu_memory_mode = gpu_memory_mode
+            if weight_dtype:
+                self.config.optimization.weight_dtype = weight_dtype
+            
+            logger.info(f"Loading base model: {model_path}")
+            success = await generator.load_model(model_path)
+            
+            if success:
+                self._loaded_models[model_type] = model_path
+                logger.info("Base model loaded successfully")
+            
+            return success
+        else:
+            # For other model types, just track the path for now
+            self._loaded_models[model_type] = model_path
+            return True
     
     async def unload_model(self, model_type: str = "base") -> bool:
         """Unload a model from memory.
@@ -141,9 +173,25 @@ class ModelManager:
             True if successful.
         """
         import torch
+        import logging
+        logger = logging.getLogger(__name__)
         
-        if model_type in self._loaded_models:
-            del self._loaded_models[model_type]
+        if model_type == "base":
+            # Use ImageGeneratorService for base model
+            from backend.services.image_generator import get_generator
+            
+            generator = get_generator()
+            success = await generator.unload_model()
+            
+            if success:
+                if model_type in self._loaded_models:
+                    del self._loaded_models[model_type]
+                logger.info("Base model unloaded")
+            
+            return success
+        else:
+            if model_type in self._loaded_models:
+                del self._loaded_models[model_type]
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -159,14 +207,27 @@ class ModelManager:
         import torch
         
         vram_usage = None
+        vram_total = None
         if torch.cuda.is_available():
             vram_usage = torch.cuda.memory_allocated() / (1024 ** 3)
+            vram_total = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        
+        # Check actual generator status
+        from backend.services.image_generator import get_generator
+        generator = get_generator()
+        
+        loaded_models = list(self._loaded_models.keys())
+        if generator.is_loaded and generator.pipe is not None:
+            if "base" not in loaded_models:
+                loaded_models.append("base")
         
         return {
-            "loaded_models": list(self._loaded_models.keys()),
-            "vram_usage_gb": vram_usage,
+            "loaded_models": loaded_models,
+            "vram_usage_gb": round(vram_usage, 2) if vram_usage else None,
+            "vram_total_gb": round(vram_total, 2) if vram_total else None,
             "gpu_available": torch.cuda.is_available(),
             "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+            "pipeline_loaded": generator.pipe is not None,
         }
     
     def list_loras(self) -> List[ModelInfo]:
@@ -191,8 +252,128 @@ class ModelManager:
         Returns:
             True if successful.
         """
-        # TODO: Implement LoRA application
-        return True
+        import logging
+        import torch
+        logger = logging.getLogger(__name__)
+        
+        from backend.services.image_generator import get_generator
+        generator = get_generator()
+        
+        if generator.pipe is None:
+            logger.error("Pipeline not loaded, cannot apply LoRA")
+            return False
+        
+        try:
+            # Try to use VideoX-Fun's merge_lora utility
+            try:
+                from videox_fun.utils.lora_utils import merge_lora
+                
+                logger.info(f"Applying LoRA: {lora_path} with weight={weight}")
+                
+                generator.pipe = merge_lora(
+                    generator.pipe,
+                    lora_path,
+                    weight,
+                    device=generator.device,
+                    dtype=generator.dtype,
+                )
+                
+                # Store current LoRA info for later removal
+                self._loaded_models["current_lora"] = {
+                    "path": lora_path,
+                    "weight": weight,
+                }
+                
+                logger.info("LoRA applied successfully")
+                return True
+                
+            except ImportError:
+                logger.warning("VideoX-Fun lora_utils not available, trying diffusers method")
+                
+                # Fallback to diffusers PEFT method if available
+                if hasattr(generator.pipe, 'load_lora_weights'):
+                    await asyncio.to_thread(
+                        generator.pipe.load_lora_weights,
+                        lora_path,
+                    )
+                    generator.pipe.fuse_lora(lora_scale=weight)
+                    
+                    self._loaded_models["current_lora"] = {
+                        "path": lora_path,
+                        "weight": weight,
+                    }
+                    
+                    logger.info("LoRA applied using diffusers method")
+                    return True
+                else:
+                    logger.error("No LoRA loading method available")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Failed to apply LoRA: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    async def remove_lora(self) -> bool:
+        """Remove currently applied LoRA from the model.
+        
+        Returns:
+            True if successful.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        from backend.services.image_generator import get_generator
+        generator = get_generator()
+        
+        if generator.pipe is None:
+            logger.error("Pipeline not loaded")
+            return False
+        
+        if "current_lora" not in self._loaded_models:
+            logger.warning("No LoRA currently applied")
+            return True
+        
+        try:
+            lora_info = self._loaded_models["current_lora"]
+            
+            # Try VideoX-Fun's unmerge_lora utility
+            try:
+                from videox_fun.utils.lora_utils import unmerge_lora
+                
+                generator.pipe = unmerge_lora(
+                    generator.pipe,
+                    lora_info["path"],
+                    lora_info["weight"],
+                    device=generator.device,
+                    dtype=generator.dtype,
+                )
+                
+                del self._loaded_models["current_lora"]
+                logger.info("LoRA removed successfully")
+                return True
+                
+            except ImportError:
+                logger.warning("VideoX-Fun lora_utils not available, trying diffusers method")
+                
+                # Fallback to diffusers method
+                if hasattr(generator.pipe, 'unfuse_lora'):
+                    generator.pipe.unfuse_lora()
+                    generator.pipe.unload_lora_weights()
+                    
+                    del self._loaded_models["current_lora"]
+                    logger.info("LoRA removed using diffusers method")
+                    return True
+                else:
+                    logger.error("No LoRA removal method available")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Failed to remove LoRA: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 
 # Global instance

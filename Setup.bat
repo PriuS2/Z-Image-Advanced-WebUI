@@ -67,8 +67,9 @@ if errorlevel 1 (
 echo.
 
 :: ==========================================
-:: Step 5: Frontend Setup (Node.js / npm)
+:: Step 5: Install VideoX-Fun
 :: ==========================================
+:: Step 5: Frontend Setup (Node.js / npm)
 echo [5/5] Setting up Frontend...
 
 :: Check if npm is installed
@@ -108,17 +109,35 @@ if not exist "uploads" mkdir uploads
 if not exist "controls" mkdir controls
 if not exist "masks" mkdir masks
 if not exist "models" mkdir models
+if not exist "models\Diffusion_Transformer" mkdir "models\Diffusion_Transformer"
+if not exist "models\Personalized_Model" mkdir "models\Personalized_Model"
+if not exist "models\Lora" mkdir "models\Lora"
+if not exist "models\Annotators" mkdir "models\Annotators"
+if not exist "config\z_image" mkdir "config\z_image"
 
 echo.
 echo ============================================
 echo    Setup Complete!
 echo ============================================
 echo.
+echo [IMPORTANT] Before running, you need to download the model:
+echo.
+echo   1. Download Z-Image-Turbo model from HuggingFace:
+echo      https://huggingface.co/alibaba-pai/Z-Image-Turbo
+echo      Place in: models\Diffusion_Transformer\Z-Image-Turbo\
+echo.
+echo   2. Download ControlNet Union weights:
+echo      https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
+echo      Place: Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors
+echo      in: models\Personalized_Model\
+echo.
+echo   Or use the Download button in the Settings tab after launching.
+echo.
 echo You can now run the application using:
 echo   Run.bat
 echo.
 echo Or manually:
-echo   Backend:  .\venv\Scripts\activate ^&^& python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+echo   Backend:  .\venv\Scripts\activate ^&^& python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 echo   Frontend: cd frontend ^&^& npm run dev
 echo.
 pause

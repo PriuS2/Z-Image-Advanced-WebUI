@@ -65,4 +65,47 @@ export const galleryApi = {
       throw new Error(handleApiError(error))
     }
   },
+
+  downloadImage: async (imageId: number): Promise<void> => {
+    try {
+      const response = await apiClient.get(`/gallery/images/${imageId}/download`, {
+        responseType: 'blob',
+      })
+      
+      // Create download link
+      const blob = new Blob([response.data])
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `image_${imageId}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      throw new Error(handleApiError(error))
+    }
+  },
+
+  regenerate: async (imageId: number): Promise<{ task_id: number }> => {
+    try {
+      const response = await apiClient.post<{ task_id: number }>(
+        `/gallery/images/${imageId}/regenerate`
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(handleApiError(error))
+    }
+  },
+
+  loadSettings: async (imageId: number): Promise<Record<string, unknown>> => {
+    try {
+      const response = await apiClient.get<Record<string, unknown>>(
+        `/gallery/images/${imageId}/settings`
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(handleApiError(error))
+    }
+  },
 }

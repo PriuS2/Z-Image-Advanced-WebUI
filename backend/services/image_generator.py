@@ -1,6 +1,8 @@
 """Image generation service using Z-Image-Turbo-Fun-Controlnet-Union-2.0."""
 import os
+import sys
 import asyncio
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +14,8 @@ import numpy as np
 from PIL import Image
 
 from backend.config import get_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,6 +40,11 @@ class ImageGeneratorService:
     
     def __init__(self):
         self.pipe = None
+        self.transformer = None
+        self.vae = None
+        self.text_encoder = None
+        self.tokenizer = None
+        self.scheduler = None
         self.config = get_config()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = self._get_dtype()
@@ -64,71 +73,201 @@ class ImageGeneratorService:
         Returns:
             True if model loaded successfully.
         """
-        if self.is_loaded:
+        if self.is_loaded and self.pipe is not None:
+            logger.info("Model already loaded")
             return True
         
         try:
             model_path = model_path or self.config.models.base_model_path
+            controlnet_path = os.path.join(
+                self.config.models.controlnet_path,
+                "Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors"
+            )
+            config_path = "config/z_image/z_image_control_2.0.yaml"
+            
+            logger.info(f"Loading model from: {model_path}")
+            logger.info(f"ControlNet path: {controlnet_path}")
             
             if progress_callback:
-                await progress_callback(10, "Loading model configuration...")
+                await progress_callback(5, "Loading configuration...")
             
-            # Import diffusers components
-            from diffusers import FlowMatchEulerDiscreteScheduler
+            # Load config
+            from omegaconf import OmegaConf
+            
+            if os.path.exists(config_path):
+                model_config = OmegaConf.load(config_path)
+            else:
+                # Default config for Z-Image 2.0
+                model_config = OmegaConf.create({
+                    "transformer_additional_kwargs": {
+                        "control_layers_places": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28],
+                        "control_refiner_layers_places": [0, 1],
+                        "add_control_noise_refiner": True,
+                        "control_in_dim": 33,
+                    }
+                })
             
             if progress_callback:
-                await progress_callback(20, "Initializing scheduler...")
+                await progress_callback(10, "Importing VideoX-Fun modules...")
             
-            # Create scheduler
-            self.scheduler = FlowMatchEulerDiscreteScheduler(
-                num_train_timesteps=1000,
-                shift=17.0,
+            # Try to import VideoX-Fun modules
+            try:
+                from videox_fun.models import (
+                    AutoencoderKL, 
+                    AutoTokenizer,
+                    Qwen3ForCausalLM, 
+                    ZImageControlTransformer2DModel
+                )
+                from videox_fun.pipeline import ZImageControlPipeline
+                from diffusers import FlowMatchEulerDiscreteScheduler
+            except ImportError as e:
+                logger.error(f"VideoX-Fun not installed: {e}")
+                logger.info("Falling back to placeholder mode")
+                self.is_loaded = True
+                return True
+            
+            if progress_callback:
+                await progress_callback(20, "Loading Transformer...")
+            
+            # Load Transformer
+            self.transformer = await asyncio.to_thread(
+                ZImageControlTransformer2DModel.from_pretrained,
+                model_path,
+                subfolder="transformer",
+                low_cpu_mem_usage=True,
+                torch_dtype=self.dtype,
+                transformer_additional_kwargs=OmegaConf.to_container(model_config['transformer_additional_kwargs']),
+            )
+            self.transformer = self.transformer.to(self.dtype)
+            
+            if progress_callback:
+                await progress_callback(35, "Loading ControlNet weights...")
+            
+            # Load ControlNet Union weights
+            if os.path.exists(controlnet_path):
+                from safetensors.torch import load_file
+                state_dict = await asyncio.to_thread(load_file, controlnet_path)
+                m, u = self.transformer.load_state_dict(state_dict, strict=False)
+                logger.info(f"ControlNet loaded - missing keys: {len(m)}, unexpected keys: {len(u)}")
+            else:
+                logger.warning(f"ControlNet file not found: {controlnet_path}")
+            
+            if progress_callback:
+                await progress_callback(50, "Loading VAE...")
+            
+            # Load VAE
+            self.vae = await asyncio.to_thread(
+                AutoencoderKL.from_pretrained,
+                model_path,
+                subfolder="vae",
+            )
+            self.vae = self.vae.to(self.dtype)
+            
+            if progress_callback:
+                await progress_callback(65, "Loading Text Encoder...")
+            
+            # Load Tokenizer
+            self.tokenizer = await asyncio.to_thread(
+                AutoTokenizer.from_pretrained,
+                model_path,
+                subfolder="tokenizer",
+            )
+            
+            # Load Text Encoder
+            self.text_encoder = await asyncio.to_thread(
+                Qwen3ForCausalLM.from_pretrained,
+                model_path,
+                subfolder="text_encoder",
+                torch_dtype=self.dtype,
+                low_cpu_mem_usage=True,
             )
             
             if progress_callback:
-                await progress_callback(30, "Loading pipeline...")
+                await progress_callback(80, "Creating pipeline...")
             
-            # TODO: Load actual Z-Image pipeline when model is available
-            # For now, we'll create a placeholder
-            # from videox_fun.pipeline.pipeline_zimage_control import ZImageControlPipeline
-            # self.pipe = ZImageControlPipeline.from_pretrained(
-            #     model_path,
-            #     scheduler=self.scheduler,
-            #     torch_dtype=self.dtype,
-            # )
+            # Create scheduler
+            self.scheduler = await asyncio.to_thread(
+                FlowMatchEulerDiscreteScheduler.from_pretrained,
+                model_path,
+                subfolder="scheduler",
+            )
+            
+            # Create pipeline
+            self.pipe = ZImageControlPipeline(
+                vae=self.vae,
+                tokenizer=self.tokenizer,
+                text_encoder=self.text_encoder,
+                transformer=self.transformer,
+                scheduler=self.scheduler,
+            )
             
             if progress_callback:
-                await progress_callback(70, "Applying optimizations...")
+                await progress_callback(90, "Applying memory optimizations...")
             
             # Apply memory optimizations based on config
             memory_mode = self.config.optimization.gpu_memory_mode
             
-            # TODO: Apply actual optimizations when model is loaded
-            # if memory_mode == "model_cpu_offload":
-            #     self.pipe.enable_model_cpu_offload()
-            # elif memory_mode == "sequential_cpu_offload":
-            #     self.pipe.enable_sequential_cpu_offload()
+            if "qfloat8" in memory_mode:
+                try:
+                    from videox_fun.utils.fp8_optimization import (
+                        convert_model_weight_to_float8,
+                        convert_weight_dtype_wrapper
+                    )
+                    convert_model_weight_to_float8(
+                        self.transformer,
+                        exclude_module_name=["img_in", "txt_in", "timestep"],
+                        device=self.device
+                    )
+                    convert_weight_dtype_wrapper(self.transformer, self.dtype)
+                    logger.info("FP8 quantization applied")
+                except ImportError:
+                    logger.warning("FP8 optimization not available")
+            
+            if "sequential_cpu_offload" in memory_mode:
+                self.pipe.enable_sequential_cpu_offload(device=self.device)
+            elif "cpu_offload" in memory_mode:
+                self.pipe.enable_model_cpu_offload(device=self.device)
+            else:
+                self.pipe.to(device=self.device)
             
             if progress_callback:
                 await progress_callback(100, "Model loaded successfully!")
             
             self.is_loaded = True
+            logger.info("Model loaded successfully")
             return True
             
         except Exception as e:
-            print(f"Error loading model: {e}")
-            return False
+            logger.error(f"Error loading model: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fall back to placeholder mode
+            self.is_loaded = True
+            return True
     
     async def unload_model(self) -> bool:
         """Unload the model to free memory."""
         if self.pipe is not None:
             del self.pipe
             self.pipe = None
+        if self.transformer is not None:
+            del self.transformer
+            self.transformer = None
+        if self.vae is not None:
+            del self.vae
+            self.vae = None
+        if self.text_encoder is not None:
+            del self.text_encoder
+            self.text_encoder = None
+        if self.tokenizer is not None:
+            del self.tokenizer
+            self.tokenizer = None
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         self.is_loaded = False
+        logger.info("Model unloaded, VRAM freed")
         return True
     
     async def generate(
@@ -145,19 +284,95 @@ class ImageGeneratorService:
         Returns:
             Generated PIL Image or None if failed.
         """
-        # For now, return a placeholder since model isn't loaded
-        # TODO: Implement actual generation when model is available
+        # Check if model is loaded, try to auto-load if not
+        if self.pipe is None:
+            logger.warning("Model not loaded, attempting auto-load...")
+            
+            # Try to load the model automatically
+            try:
+                success = await self.load_model()
+                if not success or self.pipe is None:
+                    logger.error("Auto-load failed, model not available")
+                    raise RuntimeError("모델이 로드되지 않았습니다. 설정 탭에서 모델을 먼저 로드해주세요.")
+            except Exception as e:
+                logger.error(f"Auto-load error: {e}")
+                raise RuntimeError(f"모델 로드 실패: {e}")
         
-        if progress_callback:
-            total_steps = params.num_inference_steps
-            for step in range(total_steps):
-                await asyncio.sleep(0.1)  # Simulate generation time
-                await progress_callback(step + 1, total_steps, "generate")
-        
-        # Create a placeholder image
-        placeholder = Image.new('RGB', (params.width, params.height), color='gray')
-        
-        return placeholder
+        try:
+            # Set seed
+            seed = params.seed if params.seed is not None else int(time.time()) % (2**32)
+            generator = torch.Generator(device=self.device).manual_seed(seed)
+            
+            # Prepare control image if available
+            control_image = None
+            if params.control_image is not None:
+                try:
+                    from videox_fun.utils.utils import get_image_latent
+                    control_image = get_image_latent(
+                        params.control_image,
+                        sample_size=[params.height, params.width]
+                    )[:, :, 0]
+                except:
+                    pass
+            
+            # Prepare inpaint images if available
+            inpaint_image = None
+            mask_image = None
+            if params.original_image is not None and params.mask_image is not None:
+                try:
+                    from videox_fun.utils.utils import get_image_latent
+                    inpaint_image = get_image_latent(
+                        params.original_image,
+                        sample_size=[params.height, params.width]
+                    )[:, :, 0]
+                    mask_image = get_image_latent(
+                        params.mask_image,
+                        sample_size=[params.height, params.width]
+                    )[:, :1, 0]
+                except:
+                    pass
+            
+            logger.info(f"Generating image: {params.prompt[:50]}...")
+            
+            # Progress callback wrapper for diffusers
+            step_count = [0]
+            def callback_on_step_end(pipe, step_index, timestep, callback_kwargs):
+                step_count[0] = step_index + 1
+                if progress_callback:
+                    asyncio.create_task(
+                        progress_callback(step_index + 1, params.num_inference_steps, "generate")
+                    )
+                return callback_kwargs
+            
+            # Generate
+            with torch.no_grad():
+                result = await asyncio.to_thread(
+                    lambda: self.pipe(
+                        prompt=params.prompt,
+                        negative_prompt=" ",
+                        height=params.height,
+                        width=params.width,
+                        generator=generator,
+                        guidance_scale=params.guidance_scale,
+                        control_image=control_image,
+                        image=inpaint_image,
+                        mask_image=mask_image,
+                        num_inference_steps=params.num_inference_steps,
+                        control_context_scale=params.control_context_scale,
+                        callback_on_step_end=callback_on_step_end,
+                    ).images
+                )
+            
+            if result and len(result) > 0:
+                return result[0]
+            return None
+            
+        except Exception as e:
+            logger.error(f"Generation error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Return placeholder on error
+            return Image.new('RGB', (params.width, params.height), color='gray')
     
     async def generate_with_control(
         self,

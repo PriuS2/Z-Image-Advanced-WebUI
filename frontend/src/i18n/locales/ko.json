@@ -93,7 +93,13 @@
     "translatePrompt": "번역 프롬프트",
     "enhancePrompt": "향상 프롬프트",
     "reset": "초기화",
-    "save": "저장"
+    "save": "저장",
+    "baseModel": "기본 모델",
+    "loaded": "로드됨",
+    "notLoaded": "로드되지 않음",
+    "modelLoaded": "모델이 로드되었습니다",
+    "modelUnloaded": "모델이 언로드되었습니다",
+    "modelDownloaded": "모델 다운로드가 완료되었습니다"
   },
   "nodes": {
     "prompt": "프롬프트",

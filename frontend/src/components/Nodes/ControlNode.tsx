@@ -1,22 +1,63 @@
-import { memo, useState } from 'react'
+import { memo, useState, useRef } from 'react'
 import { Handle, Position, NodeProps } from 'reactflow'
 import { useTranslation } from 'react-i18next'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Upload, X } from 'lucide-react'
+import { generationApi } from '../../api/generation'
+import { useGenerationStore } from '../../stores/generationStore'
+import { useToast } from '../../hooks/useToast'
 
 const controlTypes = ['canny', 'hed', 'depth', 'pose', 'mlsd']
 
 function ControlNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
+  const { setParams } = useGenerationStore()
+  const { error: toastError, success: toastSuccess } = useToast()
+  
   const [controlType, setControlType] = useState('canny')
   const [isExtracting, setIsExtracting] = useState(false)
   const [extractedImage, setExtractedImage] = useState<string | null>(null)
+  const [sourceImage, setSourceImage] = useState<string | null>(null)
+  const [sourceFile, setSourceFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setSourceFile(file)
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        setSourceImage(event.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const handleExtract = async () => {
+    if (!sourceFile) {
+      toastError(t('common.error'), 'Please upload an image first')
+      return
+    }
+
     setIsExtracting(true)
-    // TODO: Implement control extraction
-    setTimeout(() => {
+    try {
+      const result = await generationApi.extractControl(sourceFile, controlType)
+      setExtractedImage(result.control_image_path)
+      setParams({ controlType, controlImagePath: result.control_image_path })
+      toastSuccess(t('common.success'), 'Control image extracted')
+    } catch (err) {
+      toastError(t('common.error'), String(err))
+    } finally {
       setIsExtracting(false)
-    }, 1000)
+    }
+  }
+
+  const clearImage = () => {
+    setSourceImage(null)
+    setSourceFile(null)
+    setExtractedImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   return (
@@ -30,6 +71,40 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
       />
       
       <div className="mb-3 text-sm font-semibold">{t('nodes.control')}</div>
+      
+      {/* Source image upload */}
+      <div className="mb-3">
+        {sourceImage ? (
+          <div className="relative">
+            <img
+              src={sourceImage}
+              alt="Source"
+              className="w-full rounded-md object-cover max-h-24"
+            />
+            <button
+              onClick={clearImage}
+              className="absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <div className="flex flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed
+              border-muted-foreground/25 p-3 text-center hover:border-primary/50 transition-colors cursor-pointer">
+              <Upload className="h-5 w-5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">{t('generate.uploadImage')}</span>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="absolute inset-0 cursor-pointer opacity-0"
+            />
+          </div>
+        )}
+      </div>
       
       {/* Control type selector */}
       <div className="mb-3">
@@ -53,7 +128,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
       {/* Extract button */}
       <button
         onClick={handleExtract}
-        disabled={isExtracting}
+        disabled={isExtracting || !sourceImage}
         className="w-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm
           bg-secondary text-secondary-foreground hover:bg-secondary/80
           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -65,6 +140,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
       {/* Preview of extracted control */}
       {extractedImage && (
         <div className="mt-3">
+          <label className="mb-1 block text-xs text-muted-foreground">Extracted</label>
           <img
             src={extractedImage}
             alt="Control"

@@ -36,10 +36,70 @@ interface EnhanceResponse {
   provider: string
 }
 
+interface ControlExtractionResponse {
+  control_image_path: string
+  control_type: string
+}
+
+interface UploadResponse {
+  path: string
+  filename: string
+}
+
 export const generationApi = {
   generate: async (request: GenerationRequest): Promise<TaskResponse> => {
     try {
       const response = await apiClient.post<TaskResponse>('/generation/generate', request)
+      return response.data
+    } catch (error) {
+      throw new Error(handleApiError(error))
+    }
+  },
+
+  extractControl: async (
+    imageFile: File,
+    controlType: string,
+    lowThreshold: number = 100,
+    highThreshold: number = 200
+  ): Promise<ControlExtractionResponse> => {
+    try {
+      const formData = new FormData()
+      formData.append('image', imageFile)
+      formData.append('request', JSON.stringify({
+        control_type: controlType,
+        low_threshold: lowThreshold,
+        high_threshold: highThreshold,
+      }))
+      
+      const response = await apiClient.post<ControlExtractionResponse>(
+        '/generation/extract-control',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(handleApiError(error))
+    }
+  },
+
+  uploadImage: async (imageFile: File): Promise<UploadResponse> => {
+    try {
+      const formData = new FormData()
+      formData.append('file', imageFile)
+      
+      const response = await apiClient.post<UploadResponse>(
+        '/generation/upload',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      )
       return response.data
     } catch (error) {
       throw new Error(handleApiError(error))
