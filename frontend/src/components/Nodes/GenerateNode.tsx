@@ -1,5 +1,5 @@
-import { memo, useState } from 'react'
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
+import { memo, useState, useEffect, useCallback } from 'react'
+import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Play, Loader2, X } from 'lucide-react'
 import { useGenerationStore } from '../../stores/generationStore'
@@ -8,10 +8,37 @@ import { useToast } from '../../hooks/useToast'
 
 function GenerateNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
-  const { params, progress, startGeneration, setLastGeneratedImage } = useGenerationStore()
+  const { params, progress, startGeneration, updateConnectionsFromEdges, nodeConnections } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
-  const { deleteElements } = useReactFlow()
+  const { deleteElements, getNode, getEdges } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
+  
+  // Subscribe to edges changes to track connections
+  const edges = useStore((state) => state.edges)
+  
+  // Update connection state when edges change
+  useEffect(() => {
+    updateConnectionsFromEdges(edges, id)
+  }, [edges, id, updateConnectionsFromEdges])
+
+  // Get control image path from connected control node
+  const getControlDataFromConnectedNode = useCallback(() => {
+    const currentEdges = getEdges()
+    const controlEdge = currentEdges.find(
+      (e) => e.target === id && e.targetHandle === 'control'
+    )
+    
+    if (controlEdge) {
+      const controlNode = getNode(controlEdge.source)
+      if (controlNode?.data) {
+        return {
+          controlImagePath: controlNode.data.controlImagePath || null,
+          controlType: controlNode.data.controlType || null,
+        }
+      }
+    }
+    return { controlImagePath: null, controlType: null }
+  }, [getEdges, getNode, id])
 
   const handleGenerate = async () => {
     if (!params.prompt) {
@@ -20,6 +47,9 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
     }
 
     try {
+      // Get control data from connected node
+      const { controlImagePath, controlType } = getControlDataFromConnectedNode()
+      
       const task = await generationApi.generate({
         prompt: params.prompt,
         prompt_ko: params.promptKo,
@@ -27,9 +57,10 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
         height: params.height,
         num_inference_steps: params.steps,
         seed: params.seed,
-        control_context_scale: params.controlScale,
+        control_context_scale: nodeConnections.isControlConnected ? params.controlScale : undefined,
         sampler: params.sampler,
-        control_type: params.controlType,
+        control_type: controlType || params.controlType,
+        control_image_path: controlImagePath,
       })
       
       startGeneration(task.id)

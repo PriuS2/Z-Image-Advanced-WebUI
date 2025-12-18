@@ -6,7 +6,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Literal
 from dataclasses import dataclass
 
 import torch
@@ -33,6 +33,11 @@ class GenerationParams:
     control_image: Optional[Image.Image] = None
     mask_image: Optional[Image.Image] = None
     original_image: Optional[Image.Image] = None
+    control_image_path: Optional[str] = None  # Path to control image file
+
+
+# Type alias for pipeline types
+PipelineType = Literal['base', 'control']
 
 
 class ImageGeneratorService:
@@ -40,6 +45,7 @@ class ImageGeneratorService:
     
     def __init__(self):
         self.pipe = None
+        self.pipe_type: Optional[PipelineType] = None  # 'base' or 'control'
         self.transformer = None
         self.vae = None
         self.text_encoder = None
@@ -110,30 +116,36 @@ class ImageGeneratorService:
     async def load_model(
         self, 
         model_path: Optional[str] = None,
-        progress_callback: Optional[Callable[[int, str], Any]] = None
+        progress_callback: Optional[Callable[[int, str], Any]] = None,
+        use_control: bool = True
     ) -> bool:
         """Load the image generation model.
         
         Args:
             model_path: Path to the model. Uses config default if not provided.
             progress_callback: Callback for progress updates (percent, message).
+            use_control: If True, load ControlPipeline; if False, load base Pipeline.
         
         Returns:
             True if model loaded successfully.
         """
-        if self.is_loaded and self.pipe is not None:
-            logger.info("Model already loaded")
+        target_type: PipelineType = 'control' if use_control else 'base'
+        
+        # Check if already loaded with the correct type
+        if self.is_loaded and self.pipe is not None and self.pipe_type == target_type:
+            logger.info(f"Model already loaded as {target_type} pipeline")
             return True
+        
+        # If loaded with different type, unload first
+        if self.is_loaded and self.pipe is not None and self.pipe_type != target_type:
+            logger.info(f"Switching pipeline from {self.pipe_type} to {target_type}")
+            await self.unload_model()
         
         try:
             model_path = model_path or self.config.models.base_model_path
             
-            # ControlNet 경로 찾기 - 폴더 또는 파일 모두 지원
-            controlnet_path = self._find_controlnet_path()
-            config_path = "config/z_image/z_image_control_2.0.yaml"
-            
             logger.info(f"Loading model from: {model_path}")
-            logger.info(f"ControlNet path: {controlnet_path}")
+            logger.info(f"Pipeline type: {target_type}")
             
             if progress_callback:
                 await progress_callback(5, "Loading configuration...")
@@ -141,18 +153,27 @@ class ImageGeneratorService:
             # Load config
             from omegaconf import OmegaConf
             
-            if os.path.exists(config_path):
-                model_config = OmegaConf.load(config_path)
+            if use_control:
+                # ControlNet 경로 찾기 - 폴더 또는 파일 모두 지원
+                controlnet_path = self._find_controlnet_path()
+                config_path = "config/z_image/z_image_control_2.0.yaml"
+                logger.info(f"ControlNet path: {controlnet_path}")
+                
+                if os.path.exists(config_path):
+                    model_config = OmegaConf.load(config_path)
+                else:
+                    # Default config for Z-Image 2.0 Control
+                    model_config = OmegaConf.create({
+                        "transformer_additional_kwargs": {
+                            "control_layers_places": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28],
+                            "control_refiner_layers_places": [0, 1],
+                            "add_control_noise_refiner": True,
+                            "control_in_dim": 33,
+                        }
+                    })
             else:
-                # Default config for Z-Image 2.0
-                model_config = OmegaConf.create({
-                    "transformer_additional_kwargs": {
-                        "control_layers_places": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28],
-                        "control_refiner_layers_places": [0, 1],
-                        "add_control_noise_refiner": True,
-                        "control_in_dim": 33,
-                    }
-                })
+                controlnet_path = None
+                model_config = None
             
             if progress_callback:
                 await progress_callback(10, "Importing VideoX-Fun modules...")
@@ -162,11 +183,16 @@ class ImageGeneratorService:
                 from videox_fun.models import (
                     AutoencoderKL, 
                     AutoTokenizer,
-                    Qwen3ForCausalLM, 
-                    ZImageControlTransformer2DModel
+                    Qwen3ForCausalLM,
                 )
-                from videox_fun.pipeline import ZImageControlPipeline
                 from diffusers import FlowMatchEulerDiscreteScheduler
+                
+                if use_control:
+                    from videox_fun.models import ZImageControlTransformer2DModel
+                    from videox_fun.pipeline import ZImageControlPipeline
+                else:
+                    from videox_fun.models import ZImageTransformer2DModel
+                    from videox_fun.pipeline import ZImagePipeline
             except ImportError as e:
                 logger.error(f"VideoX-Fun not installed: {e}")
                 logger.info("Falling back to placeholder mode")
@@ -176,22 +202,31 @@ class ImageGeneratorService:
             if progress_callback:
                 await progress_callback(20, "Loading Transformer...")
             
-            # Load Transformer
-            self.transformer = await asyncio.to_thread(
-                ZImageControlTransformer2DModel.from_pretrained,
-                model_path,
-                subfolder="transformer",
-                low_cpu_mem_usage=True,
-                torch_dtype=self.dtype,
-                transformer_additional_kwargs=OmegaConf.to_container(model_config['transformer_additional_kwargs']),
-            )
+            # Load Transformer based on pipeline type
+            if use_control:
+                self.transformer = await asyncio.to_thread(
+                    ZImageControlTransformer2DModel.from_pretrained,
+                    model_path,
+                    subfolder="transformer",
+                    low_cpu_mem_usage=True,
+                    torch_dtype=self.dtype,
+                    transformer_additional_kwargs=OmegaConf.to_container(model_config['transformer_additional_kwargs']),
+                )
+            else:
+                self.transformer = await asyncio.to_thread(
+                    ZImageTransformer2DModel.from_pretrained,
+                    model_path,
+                    subfolder="transformer",
+                    low_cpu_mem_usage=True,
+                    torch_dtype=self.dtype,
+                )
             self.transformer = self.transformer.to(self.dtype)
             
             if progress_callback:
-                await progress_callback(35, "Loading ControlNet weights...")
+                await progress_callback(35, "Loading ControlNet weights..." if use_control else "Transformer loaded...")
             
-            # Load ControlNet Union weights
-            if controlnet_path and os.path.exists(controlnet_path):
+            # Load ControlNet Union weights (only for control pipeline)
+            if use_control and controlnet_path and os.path.exists(controlnet_path):
                 if os.path.isfile(controlnet_path) and controlnet_path.endswith(".safetensors"):
                     # 단일 safetensors 파일
                     from safetensors.torch import load_file
@@ -212,7 +247,7 @@ class ImageGeneratorService:
                             break
                     if not loaded:
                         logger.warning(f"No safetensors file found in ControlNet folder: {controlnet_path}")
-            else:
+            elif use_control:
                 logger.warning(f"ControlNet not found: {controlnet_path}")
             
             if progress_callback:
@@ -255,14 +290,25 @@ class ImageGeneratorService:
                 subfolder="scheduler",
             )
             
-            # Create pipeline
-            self.pipe = ZImageControlPipeline(
-                vae=self.vae,
-                tokenizer=self.tokenizer,
-                text_encoder=self.text_encoder,
-                transformer=self.transformer,
-                scheduler=self.scheduler,
-            )
+            # Create pipeline based on type
+            if use_control:
+                self.pipe = ZImageControlPipeline(
+                    vae=self.vae,
+                    tokenizer=self.tokenizer,
+                    text_encoder=self.text_encoder,
+                    transformer=self.transformer,
+                    scheduler=self.scheduler,
+                )
+                self.pipe_type = 'control'
+            else:
+                self.pipe = ZImagePipeline(
+                    vae=self.vae,
+                    tokenizer=self.tokenizer,
+                    text_encoder=self.text_encoder,
+                    transformer=self.transformer,
+                    scheduler=self.scheduler,
+                )
+                self.pipe_type = 'base'
             
             if progress_callback:
                 await progress_callback(90, "Applying memory optimizations...")
@@ -276,9 +322,11 @@ class ImageGeneratorService:
                         convert_model_weight_to_float8,
                         convert_weight_dtype_wrapper
                     )
+                    # Exclude modules that need to maintain original dtype
+                    # pad tokens cause dtype mismatch error if converted to FP8
                     convert_model_weight_to_float8(
                         self.transformer,
-                        exclude_module_name=["img_in", "txt_in", "timestep"],
+                        exclude_module_name=["img_in", "txt_in", "timestep", "x_pad_token", "cap_pad_token"],
                         device=self.device
                     )
                     convert_weight_dtype_wrapper(self.transformer, self.dtype)
@@ -297,7 +345,7 @@ class ImageGeneratorService:
                 await progress_callback(100, "Model loaded successfully!")
             
             self.is_loaded = True
-            logger.info("Model loaded successfully")
+            logger.info(f"Model loaded successfully as {self.pipe_type} pipeline")
             return True
             
         except Exception as e:
@@ -325,13 +373,26 @@ class ImageGeneratorService:
         if self.tokenizer is not None:
             del self.tokenizer
             self.tokenizer = None
+        if self.scheduler is not None:
+            del self.scheduler
+            self.scheduler = None
         
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         self.is_loaded = False
+        self.pipe_type = None
         logger.info("Model unloaded, VRAM freed")
         return True
+    
+    def _needs_control_pipeline(self, params: GenerationParams) -> bool:
+        """Check if control pipeline is needed based on params."""
+        return (
+            params.control_image is not None or 
+            params.control_image_path is not None or
+            params.mask_image is not None or 
+            params.original_image is not None
+        )
     
     async def generate(
         self,
@@ -347,13 +408,14 @@ class ImageGeneratorService:
         Returns:
             Generated PIL Image or None if failed.
         """
-        # Check if model is loaded, try to auto-load if not
+        # Determine if we need control pipeline
+        needs_control = self._needs_control_pipeline(params)
+        
+        # Check if model is loaded with the correct pipeline type
         if self.pipe is None:
             logger.warning("Model not loaded, attempting auto-load...")
-            
-            # Try to load the model automatically
             try:
-                success = await self.load_model()
+                success = await self.load_model(use_control=needs_control)
                 if not success or self.pipe is None:
                     logger.error("Auto-load failed, model not available")
                     raise RuntimeError("모델이 로드되지 않았습니다. 설정 탭에서 모델을 먼저 로드해주세요.")
@@ -361,22 +423,39 @@ class ImageGeneratorService:
                 logger.error(f"Auto-load error: {e}")
                 raise RuntimeError(f"모델 로드 실패: {e}")
         
+        # Switch pipeline if needed
+        if needs_control and self.pipe_type != 'control':
+            logger.info("Switching to control pipeline for this generation...")
+            await self.load_model(use_control=True)
+        elif not needs_control and self.pipe_type == 'control':
+            logger.info("Switching to base pipeline for this generation...")
+            await self.load_model(use_control=False)
+        
         try:
             # Set seed
             seed = params.seed if params.seed is not None else int(time.time()) % (2**32)
             generator = torch.Generator(device=self.device).manual_seed(seed)
             
-            # Prepare control image if available
+            # Load control image from path if provided
+            control_image_pil = params.control_image
+            if control_image_pil is None and params.control_image_path:
+                try:
+                    control_image_pil = Image.open(params.control_image_path).convert('RGB')
+                    logger.info(f"Loaded control image from: {params.control_image_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load control image from path: {e}")
+            
+            # Prepare control image if available (for control pipeline)
             control_image = None
-            if params.control_image is not None:
+            if control_image_pil is not None and self.pipe_type == 'control':
                 try:
                     from videox_fun.utils.utils import get_image_latent
                     control_image = get_image_latent(
-                        params.control_image,
+                        control_image_pil,
                         sample_size=[params.height, params.width]
                     )[:, :, 0]
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to process control image: {e}")
             
             # Prepare inpaint images if available
             inpaint_image = None
@@ -392,48 +471,63 @@ class ImageGeneratorService:
                         params.mask_image,
                         sample_size=[params.height, params.width]
                     )[:, :1, 0]
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to process inpaint images: {e}")
             
-            logger.info(f"Generating image: {params.prompt[:50]}...")
+            logger.info(f"Generating image with {self.pipe_type} pipeline: {params.prompt[:50]}...")
+            
+            # Get the current event loop for thread-safe callback
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
             
             # Progress callback wrapper for diffusers
             step_count = [0]
             def callback_on_step_end(pipe, step_index, timestep, callback_kwargs):
                 step_count[0] = step_index + 1
-                if progress_callback:
-                    asyncio.create_task(
-                        progress_callback(step_index + 1, params.num_inference_steps, "generate")
+                if progress_callback and loop is not None:
+                    # Use run_coroutine_threadsafe for calling async from thread
+                    asyncio.run_coroutine_threadsafe(
+                        progress_callback(step_index + 1, params.num_inference_steps, "generate"),
+                        loop
                     )
                 return callback_kwargs
             
-            # Build pipeline kwargs - only include non-None values
-            pipe_kwargs = {
-                "prompt": params.prompt,
-                "negative_prompt": " ",
-                "height": params.height,
-                "width": params.width,
-                "generator": generator,
-                "guidance_scale": params.guidance_scale,
-                "num_inference_steps": params.num_inference_steps,
-                "control_context_scale": params.control_context_scale,
-                "callback_on_step_end": callback_on_step_end,
-            }
-            
-            # Only add control_image if it exists
-            if control_image is not None:
-                pipe_kwargs["control_image"] = control_image
-            
-            # Only add inpaint parameters if both image and mask exist
-            if inpaint_image is not None and mask_image is not None:
-                pipe_kwargs["image"] = inpaint_image
-                pipe_kwargs["mask_image"] = mask_image
-            
-            # Generate
+            # Generate based on pipeline type
             with torch.no_grad():
-                result = await asyncio.to_thread(
-                    lambda: self.pipe(**pipe_kwargs).images
-                )
+                if self.pipe_type == 'control':
+                    # Control pipeline with control image support
+                    result = await asyncio.to_thread(
+                        lambda: self.pipe(
+                            prompt=params.prompt,
+                            negative_prompt=" ",
+                            height=params.height,
+                            width=params.width,
+                            generator=generator,
+                            guidance_scale=params.guidance_scale,
+                            control_image=control_image,
+                            image=inpaint_image,
+                            mask_image=mask_image,
+                            num_inference_steps=params.num_inference_steps,
+                            control_context_scale=params.control_context_scale,
+                            callback_on_step_end=callback_on_step_end,
+                        ).images
+                    )
+                else:
+                    # Base pipeline without control
+                    result = await asyncio.to_thread(
+                        lambda: self.pipe(
+                            prompt=params.prompt,
+                            negative_prompt=" ",
+                            height=params.height,
+                            width=params.width,
+                            generator=generator,
+                            guidance_scale=params.guidance_scale,
+                            num_inference_steps=params.num_inference_steps,
+                            callback_on_step_end=callback_on_step_end,
+                        ).images
+                    )
             
             if result and len(result) > 0:
                 return result[0]

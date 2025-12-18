@@ -55,6 +55,9 @@ desktop.ini
 # 생성된 이미지 출력 폴더
 outputs/
 
+# 업로드 이미지들
+uploads/*
+
 # 사용자 데이터 (히스토리, 개인 설정)
 data/*
 data/history.json

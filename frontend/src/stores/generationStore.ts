@@ -27,6 +27,14 @@ interface GenerationProgress {
   isGenerating: boolean
 }
 
+// Node connection state for tracking which nodes are connected to Generate node
+interface NodeConnections {
+  isControlConnected: boolean
+  isMaskConnected: boolean
+  controlNodeId: string | null
+  maskNodeId: string | null
+}
+
 interface GenerationState {
   // Parameters
   params: GenerationParams
@@ -34,6 +42,9 @@ interface GenerationState {
   // Flow editor
   nodes: Node[]
   edges: Edge[]
+  
+  // Node connection state
+  nodeConnections: NodeConnections
   
   // Progress
   progress: GenerationProgress
@@ -46,6 +57,8 @@ interface GenerationState {
   setParams: (params: Partial<GenerationParams>) => void
   setNodes: (nodes: Node[]) => void
   setEdges: (edges: Edge[]) => void
+  setNodeConnections: (connections: Partial<NodeConnections>) => void
+  updateConnectionsFromEdges: (edges: Edge[], generateNodeId: string) => void
   setProgress: (progress: Partial<GenerationProgress>) => void
   setLastGeneratedImage: (image: string | null, imageId?: number | null) => void
   resetProgress: () => void
@@ -78,10 +91,18 @@ const defaultProgress: GenerationProgress = {
   isGenerating: false,
 }
 
+const defaultNodeConnections: NodeConnections = {
+  isControlConnected: false,
+  isMaskConnected: false,
+  controlNodeId: null,
+  maskNodeId: null,
+}
+
 export const useGenerationStore = create<GenerationState>()((set) => ({
   params: defaultParams,
   nodes: [],
   edges: [],
+  nodeConnections: defaultNodeConnections,
   progress: defaultProgress,
   lastGeneratedImage: null,
   lastGeneratedImageId: null,
@@ -94,6 +115,30 @@ export const useGenerationStore = create<GenerationState>()((set) => ({
   setNodes: (nodes) => set({ nodes }),
 
   setEdges: (edges) => set({ edges }),
+
+  setNodeConnections: (connections) =>
+    set((state) => ({
+      nodeConnections: { ...state.nodeConnections, ...connections },
+    })),
+
+  updateConnectionsFromEdges: (edges, generateNodeId) => {
+    // Find edges connected to the generate node's control and mask handles
+    const controlEdge = edges.find(
+      (e) => e.target === generateNodeId && e.targetHandle === 'control'
+    )
+    const maskEdge = edges.find(
+      (e) => e.target === generateNodeId && e.targetHandle === 'mask'
+    )
+
+    set({
+      nodeConnections: {
+        isControlConnected: !!controlEdge,
+        isMaskConnected: !!maskEdge,
+        controlNodeId: controlEdge?.source || null,
+        maskNodeId: maskEdge?.source || null,
+      },
+    })
+  },
 
   setProgress: (newProgress) =>
     set((state) => ({

@@ -109,7 +109,27 @@ class QueueManager:
             # Get generator
             generator = get_generator()
             
-            # Create generation params
+            # Load control image if path is provided
+            control_image = None
+            control_image_path = task.params.get("control_image_path")
+            if control_image_path:
+                try:
+                    from PIL import Image as PILImage
+                    control_image = PILImage.open(control_image_path).convert('RGB')
+                except Exception as e:
+                    print(f"Failed to load control image: {e}")
+            
+            # Load mask image if path is provided
+            mask_image = None
+            mask_image_path = task.params.get("mask_image_path")
+            if mask_image_path:
+                try:
+                    from PIL import Image as PILImage
+                    mask_image = PILImage.open(mask_image_path).convert('L')
+                except Exception as e:
+                    print(f"Failed to load mask image: {e}")
+            
+            # Create generation params with control support
             params = GenerationParams(
                 prompt=task.params.get("prompt", ""),
                 width=task.params.get("width", 1024),
@@ -119,6 +139,10 @@ class QueueManager:
                 control_context_scale=task.params.get("control_context_scale", 0.75),
                 seed=task.params.get("seed"),
                 sampler=task.params.get("sampler", "Flow"),
+                control_type=task.params.get("control_type"),
+                control_image=control_image,
+                control_image_path=control_image_path,
+                mask_image=mask_image,
             )
             
             # Progress callback

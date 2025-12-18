@@ -17,9 +17,12 @@ const samplers = ['Flow', 'Flow_Unipc', 'Flow_DPM++']
 
 function ParametersNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
-  const { params, setParams } = useGenerationStore()
+  const { params, setParams, nodeConnections } = useGenerationStore()
   const { deleteElements } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
+  
+  // Check if Control node is connected to show Control Scale
+  const isControlConnected = nodeConnections.isControlConnected
 
   const randomizeSeed = () => {
     setParams({ seed: Math.floor(Math.random() * 2147483647) })
@@ -110,20 +113,22 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
         />
       </div>
       
-      {/* Control Scale */}
-      <div className="mb-3">
-        <label className="mb-1 block text-xs text-muted-foreground">
-          {t('generate.controlScale')}: {params.controlScale.toFixed(2)}
-        </label>
-        <input
-          type="range"
-          value={params.controlScale * 100}
-          onChange={(e) => setParams({ controlScale: parseInt(e.target.value) / 100 })}
-          className="nodrag w-full accent-primary"
-          min={0}
-          max={100}
-        />
-      </div>
+      {/* Control Scale - Only shown when Control node is connected */}
+      {isControlConnected && (
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-muted-foreground">
+            {t('generate.controlScale')}: {params.controlScale.toFixed(2)}
+          </label>
+          <input
+            type="range"
+            value={params.controlScale * 100}
+            onChange={(e) => setParams({ controlScale: parseInt(e.target.value) / 100 })}
+            className="nodrag w-full accent-primary"
+            min={0}
+            max={100}
+          />
+        </div>
+      )}
       
       {/* Seed */}
       <div className="mb-3">

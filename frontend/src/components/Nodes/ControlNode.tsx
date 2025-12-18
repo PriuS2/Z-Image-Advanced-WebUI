@@ -1,4 +1,4 @@
-import { memo, useState, useRef } from 'react'
+import { memo, useState, useRef, useCallback } from 'react'
 import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Upload, X } from 'lucide-react'
@@ -8,19 +8,30 @@ import { useToast } from '../../hooks/useToast'
 
 const controlTypes = ['canny', 'hed', 'depth', 'pose', 'mlsd']
 
-function ControlNodeComponent({ id, selected }: NodeProps) {
+function ControlNodeComponent({ id, selected, data }: NodeProps) {
   const { t } = useTranslation()
   const { setParams } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
-  const { deleteElements } = useReactFlow()
+  const { deleteElements, setNodes } = useReactFlow()
   
-  const [controlType, setControlType] = useState('canny')
+  const [controlType, setControlType] = useState(data?.controlType || 'canny')
   const [isExtracting, setIsExtracting] = useState(false)
-  const [extractedImage, setExtractedImage] = useState<string | null>(null)
+  const [extractedImage, setExtractedImage] = useState<string | null>(data?.controlImagePath || null)
   const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Update node data so GenerateNode can access it
+  const updateNodeData = useCallback((newData: Record<string, unknown>) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, ...newData } }
+          : node
+      )
+    )
+  }, [id, setNodes])
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -34,6 +45,11 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
     }
   }
 
+  const handleControlTypeChange = (newType: string) => {
+    setControlType(newType)
+    updateNodeData({ controlType: newType })
+  }
+
   const handleExtract = async () => {
     if (!sourceFile) {
       toastError(t('common.error'), 'Please upload an image first')
@@ -44,6 +60,14 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
     try {
       const result = await generationApi.extractControl(sourceFile, controlType)
       setExtractedImage(result.control_image_path)
+      
+      // Update node data for GenerateNode to access
+      updateNodeData({ 
+        controlImagePath: result.control_image_path,
+        controlType: controlType,
+      })
+      
+      // Also update global params (for backwards compatibility)
       setParams({ controlType, controlImagePath: result.control_image_path })
       toastSuccess(t('common.success'), 'Control image extracted')
     } catch (err) {
@@ -57,6 +81,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
     setSourceImage(null)
     setSourceFile(null)
     setExtractedImage(null)
+    updateNodeData({ controlImagePath: null })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -132,7 +157,7 @@ function ControlNodeComponent({ id, selected }: NodeProps) {
         </label>
         <select
           value={controlType}
-          onChange={(e) => setControlType(e.target.value)}
+          onChange={(e) => handleControlTypeChange(e.target.value)}
           className="nodrag w-full rounded-md border border-input bg-background px-3 py-2 text-sm
             focus:outline-none focus:ring-2 focus:ring-ring"
         >
