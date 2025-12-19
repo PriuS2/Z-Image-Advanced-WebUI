@@ -1,15 +1,16 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Brush, Eraser, RotateCcw, Download, ZoomIn, ZoomOut } from 'lucide-react'
+import { Brush, Eraser, RotateCcw, Download, ZoomIn, ZoomOut, Undo2, Redo2 } from 'lucide-react'
 
 interface MaskEditorProps {
   image: string
+  initialMask?: string | null  // 이전에 그린 마스크를 복원하기 위한 prop
   onMaskChange?: (maskDataUrl: string) => void
   width?: number
   height?: number
 }
 
-export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: MaskEditorProps) {
+export function MaskEditor({ image, initialMask, onMaskChange, width = 512, height = 512 }: MaskEditorProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -21,8 +22,93 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
   const [zoom, setZoom] = useState(1)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null)
+  
+  // Undo/Redo 히스토리 스택
+  const historyRef = useRef<ImageData[]>([])
+  const historyIndexRef = useRef<number>(-1)
+  const maxHistorySize = 50
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+  
+  // initialMask는 처음 마운트 시에만 사용 (ref로 저장)
+  const initialMaskRef = useRef<string | null | undefined>(initialMask)
+  const hasInitializedRef = useRef(false)
+  
+  // 히스토리 상태 업데이트
+  const updateHistoryState = useCallback(() => {
+    setCanUndo(historyIndexRef.current > 0)
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1)
+  }, [])
 
-  // Initialize canvases
+  // 히스토리에 현재 상태 저장
+  const saveToHistory = useCallback(() => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    
+    const maskCtx = maskCanvas.getContext('2d')
+    if (!maskCtx) return
+    
+    const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+    
+    // 현재 인덱스 이후의 히스토리 삭제 (새 작업 시작)
+    historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1)
+    
+    // 새 상태 추가
+    historyRef.current.push(imageData)
+    
+    // 최대 크기 제한
+    if (historyRef.current.length > maxHistorySize) {
+      historyRef.current.shift()
+    } else {
+      historyIndexRef.current++
+    }
+    
+    updateHistoryState()
+  }, [maxHistorySize, updateHistoryState])
+
+  // Undo 기능
+  const undo = useCallback(() => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas || historyIndexRef.current <= 0) return
+    
+    const maskCtx = maskCanvas.getContext('2d')
+    if (!maskCtx) return
+    
+    historyIndexRef.current--
+    const imageData = historyRef.current[historyIndexRef.current]
+    maskCtx.putImageData(imageData, 0, 0)
+    
+    updateHistoryState()
+    
+    // 마스크 변경 알림
+    if (onMaskChange) {
+      const dataUrl = getMaskDataUrl()
+      if (dataUrl) onMaskChange(dataUrl)
+    }
+  }, [onMaskChange, updateHistoryState])
+
+  // Redo 기능
+  const redo = useCallback(() => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas || historyIndexRef.current >= historyRef.current.length - 1) return
+    
+    const maskCtx = maskCanvas.getContext('2d')
+    if (!maskCtx) return
+    
+    historyIndexRef.current++
+    const imageData = historyRef.current[historyIndexRef.current]
+    maskCtx.putImageData(imageData, 0, 0)
+    
+    updateHistoryState()
+    
+    // 마스크 변경 알림
+    if (onMaskChange) {
+      const dataUrl = getMaskDataUrl()
+      if (dataUrl) onMaskChange(dataUrl)
+    }
+  }, [onMaskChange, updateHistoryState])
+
+  // Initialize canvases (only on first mount or when image changes)
   useEffect(() => {
     const canvas = canvasRef.current
     const maskCanvas = maskCanvasRef.current
@@ -64,11 +150,81 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
       
       ctx.drawImage(img, 0, 0)
       
-      // Initialize mask as transparent
-      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+      // 이미 초기화되었으면 마스크 복원 건너뛰기
+      if (hasInitializedRef.current) {
+        return
+      }
+      hasInitializedRef.current = true
+      
+      // 이전 마스크가 있으면 복원, 없으면 초기화 (처음 한 번만)
+      const maskToRestore = initialMaskRef.current
+      if (maskToRestore) {
+        const maskImg = new Image()
+        maskImg.crossOrigin = 'anonymous'
+        maskImg.onload = () => {
+          // 흰색 마스크를 빨간색으로 변환하여 표시
+          const tempCanvas = document.createElement('canvas')
+          tempCanvas.width = maskCanvas.width
+          tempCanvas.height = maskCanvas.height
+          const tempCtx = tempCanvas.getContext('2d')
+          if (!tempCtx) return
+          
+          tempCtx.drawImage(maskImg, 0, 0, maskCanvas.width, maskCanvas.height)
+          const imageData = tempCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+          const data = imageData.data
+          
+          // 흰색(마스크) 영역을 빨간색 반투명으로 변환
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i] > 128 && data[i + 1] > 128 && data[i + 2] > 128 && data[i + 3] > 128) {
+              data[i] = 255     // R
+              data[i + 1] = 80  // G
+              data[i + 2] = 80  // B
+              data[i + 3] = 178 // A (0.7 * 255)
+            } else {
+              data[i + 3] = 0   // 투명
+            }
+          }
+          
+          maskCtx.putImageData(imageData, 0, 0)
+          
+          // 초기 히스토리 저장
+          historyRef.current = [maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)]
+          historyIndexRef.current = 0
+          setCanUndo(false)
+          setCanRedo(false)
+        }
+        maskImg.src = maskToRestore
+      } else {
+        // Initialize mask as transparent
+        maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+        
+        // 초기 히스토리 저장
+        historyRef.current = [maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)]
+        historyIndexRef.current = 0
+        setCanUndo(false)
+        setCanRedo(false)
+      }
     }
     img.src = image
   }, [image])
+
+  // 키보드 단축키 핸들러 (Ctrl+Z, Ctrl+Y)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault()
+          undo()
+        } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+          e.preventDefault()
+          redo()
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [undo, redo])
 
   // Convert mask to white-on-transparent for export
   const getMaskDataUrl = useCallback(() => {
@@ -191,9 +347,13 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault()
     e.stopPropagation()
+    if (isDrawing) {
+      // 드로잉 완료 시 히스토리에 저장
+      saveToHistory()
+    }
     setIsDrawing(false)
     setLastPos(null)
-  }, [])
+  }, [isDrawing, saveToHistory])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault()
@@ -228,8 +388,9 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
     if (!maskCtx) return
 
     maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+    saveToHistory()
     notifyMaskChange()
-  }, [notifyMaskChange])
+  }, [notifyMaskChange, saveToHistory])
 
   const downloadMask = useCallback(() => {
     const dataUrl = getMaskDataUrl()
@@ -290,6 +451,25 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
             title="Zoom in"
           >
             <ZoomIn className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex rounded-md border border-border overflow-hidden">
+          <button
+            onClick={undo}
+            className="p-2 hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Undo (Ctrl+Z)"
+            disabled={!canUndo}
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={redo}
+            className="p-2 hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Redo (Ctrl+Y)"
+            disabled={!canRedo}
+          >
+            <Redo2 className="h-4 w-4" />
           </button>
         </div>
 

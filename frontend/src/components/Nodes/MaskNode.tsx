@@ -378,6 +378,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
             
             <MaskEditor
               image={sourceImage}
+              initialMask={maskImage}
               onMaskChange={(dataUrl) => setMaskImage(dataUrl)}
             />
             
