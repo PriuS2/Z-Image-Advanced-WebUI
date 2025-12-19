@@ -196,11 +196,19 @@ async def extract_control(
                 cv2.line(result, (x1, y1), (x2, y2), (255, 255, 255), 2)
         
     elif control_type == "pose":
-        # Pose detection requires DWPose model - return placeholder
-        # This would need actual pose detection model
-        result = img.copy()
-        cv2.putText(result, "Pose detection requires DWPose model", 
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        # Pose detection using DWPose
+        from backend.services.pose_extractor import get_pose_extractor
+        
+        # Convert BGR to RGB for PIL
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(rgb_img)
+        
+        # Get pose using the pose extractor
+        pose_extractor = get_pose_extractor()
+        pose_image = pose_extractor.extract_pose(pil_image)
+        
+        # Convert back to numpy array (BGR)
+        result = cv2.cvtColor(np.array(pose_image), cv2.COLOR_RGB2BGR)
         
     else:
         raise HTTPException(

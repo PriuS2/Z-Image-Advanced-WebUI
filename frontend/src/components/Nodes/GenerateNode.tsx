@@ -8,7 +8,7 @@ import { useToast } from '../../hooks/useToast'
 
 function GenerateNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
-  const { params, progress, startGeneration, updateConnectionsFromEdges, nodeConnections, lastGeneratedImage } = useGenerationStore()
+  const { progress, startGeneration, lastGeneratedImage } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
   const { deleteElements, getNode, getEdges, setNodes } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
@@ -18,11 +18,6 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
   
   // Subscribe to edges changes to track connections
   const edges = useStore((state) => state.edges)
-  
-  // Update connection state when edges change
-  useEffect(() => {
-    updateConnectionsFromEdges(edges, id)
-  }, [edges, id, updateConnectionsFromEdges])
 
   // Update node data when generation completes
   useEffect(() => {
@@ -96,11 +91,73 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
     return null
   }, [getEdges, getNode, id])
 
+  // Get prompt data from connected prompt node
+  const getPromptDataFromConnectedNode = useCallback(() => {
+    const currentEdges = getEdges()
+    const promptEdge = currentEdges.find(
+      (e) => e.target === id && e.targetHandle === 'prompt'
+    )
+    
+    if (promptEdge) {
+      const promptNode = getNode(promptEdge.source)
+      if (promptNode?.data) {
+        return {
+          prompt: promptNode.data.prompt || '',
+          promptKo: promptNode.data.promptKo || '',
+        }
+      }
+    }
+    return { prompt: '', promptKo: '' }
+  }, [getEdges, getNode, id])
+
+  // Get parameters data from connected parameters node
+  const getParamsDataFromConnectedNode = useCallback(() => {
+    const currentEdges = getEdges()
+    const paramsEdge = currentEdges.find(
+      (e) => e.target === id && e.targetHandle === 'params'
+    )
+    
+    if (paramsEdge) {
+      const paramsNode = getNode(paramsEdge.source)
+      if (paramsNode?.data) {
+        return {
+          width: paramsNode.data.width ?? 1024,
+          height: paramsNode.data.height ?? 1024,
+          steps: paramsNode.data.steps ?? 8,
+          seed: paramsNode.data.seed ?? null,
+          sampler: paramsNode.data.sampler ?? 'Flow',
+          controlScale: paramsNode.data.controlScale ?? 0.6,
+        }
+      }
+    }
+    // 기본값 반환
+    return {
+      width: 1024,
+      height: 1024,
+      steps: 8,
+      seed: null,
+      sampler: 'Flow',
+      controlScale: 0.6,
+    }
+  }, [getEdges, getNode, id])
+
+  // Check if control node is connected
+  const isControlConnected = useCallback(() => {
+    const currentEdges = getEdges()
+    return currentEdges.some((e) => e.target === id && e.targetHandle === 'control')
+  }, [getEdges, id])
+
   const handleGenerate = async () => {
-    if (!params.prompt) {
-      toastError('Prompt is required')
+    // Get prompt data from connected node
+    const { prompt, promptKo } = getPromptDataFromConnectedNode()
+    
+    if (!prompt) {
+      toastError('Prompt is required - connect a Prompt node')
       return
     }
+
+    // Get parameters from connected node
+    const params = getParamsDataFromConnectedNode()
 
     try {
       // Get control data from connected node
@@ -114,15 +171,15 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
       const originalImagePath = maskOriginalPath || directImagePath
       
       const task = await generationApi.generate({
-        prompt: params.prompt,
-        prompt_ko: params.promptKo,
+        prompt: prompt,
+        prompt_ko: promptKo,
         width: params.width,
         height: params.height,
         num_inference_steps: params.steps,
         seed: params.seed,
-        control_context_scale: nodeConnections.isControlConnected ? params.controlScale : undefined,
+        control_context_scale: isControlConnected() ? params.controlScale : undefined,
         sampler: params.sampler,
-        control_type: controlType || params.controlType,
+        control_type: controlType || undefined,
         control_image_path: controlImagePath,
         mask_image_path: maskImagePath,
         original_image_path: originalImagePath,

@@ -1,28 +1,47 @@
-import { memo, useState } from 'react'
+import { memo, useState, useCallback } from 'react'
 import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Languages, Sparkles, Loader2, X } from 'lucide-react'
-import { useGenerationStore } from '../../stores/generationStore'
 import { generationApi } from '../../api/generation'
 import { useToast } from '../../hooks/useToast'
 
-function PromptNodeComponent({ id, selected }: NodeProps) {
-  const { deleteElements } = useReactFlow()
+// 노드 데이터 타입 정의
+interface PromptNodeData {
+  prompt?: string
+  promptKo?: string
+}
+
+function PromptNodeComponent({ id, selected, data }: NodeProps<PromptNodeData>) {
+  const { deleteElements, setNodes } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
   const { t } = useTranslation()
-  const { params, setParams } = useGenerationStore()
   const { error: toastError } = useToast()
   
   const [isTranslating, setIsTranslating] = useState(false)
   const [isEnhancing, setIsEnhancing] = useState(false)
 
+  // 노드 자체의 데이터 (글로벌 스토어 대신)
+  const prompt = data?.prompt || ''
+  const promptKo = data?.promptKo || ''
+
+  // 노드 데이터 업데이트 함수
+  const updateNodeData = useCallback((newData: Partial<PromptNodeData>) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, ...newData } }
+          : node
+      )
+    )
+  }, [id, setNodes])
+
   const handleTranslate = async () => {
-    if (!params.promptKo) return
+    if (!promptKo) return
     
     setIsTranslating(true)
     try {
-      const result = await generationApi.translate(params.promptKo)
-      setParams({ prompt: result.translated })
+      const result = await generationApi.translate(promptKo)
+      updateNodeData({ prompt: result.translated })
     } catch (err) {
       toastError(t('errors.networkError'), String(err))
     } finally {
@@ -31,12 +50,12 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
   }
 
   const handleEnhance = async () => {
-    if (!params.prompt) return
+    if (!prompt) return
     
     setIsEnhancing(true)
     try {
-      const result = await generationApi.enhance(params.prompt)
-      setParams({ prompt: result.enhanced })
+      const result = await generationApi.enhance(prompt)
+      updateNodeData({ prompt: result.enhanced })
     } catch (err) {
       toastError(t('errors.networkError'), String(err))
     } finally {
@@ -68,8 +87,8 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
           {t('generate.promptKo')}
         </label>
         <textarea
-          value={params.promptKo}
-          onChange={(e) => setParams({ promptKo: e.target.value })}
+          value={promptKo}
+          onChange={(e) => updateNodeData({ promptKo: e.target.value })}
           className="nodrag w-full rounded-md border border-input bg-background px-3 py-2 text-sm
             resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           rows={2}
@@ -77,7 +96,7 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         />
         <button
           onClick={handleTranslate}
-          disabled={isTranslating || !params.promptKo}
+          disabled={isTranslating || !promptKo}
           className="nodrag mt-1 flex items-center gap-1 rounded px-2 py-1 text-xs
             bg-secondary text-secondary-foreground hover:bg-secondary/80
             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -97,8 +116,8 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
           {t('generate.promptEn')}
         </label>
         <textarea
-          value={params.prompt}
-          onChange={(e) => setParams({ prompt: e.target.value })}
+          value={prompt}
+          onChange={(e) => updateNodeData({ prompt: e.target.value })}
           className="nodrag w-full rounded-md border border-input bg-background px-3 py-2 text-sm
             resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           rows={3}
@@ -106,7 +125,7 @@ function PromptNodeComponent({ id, selected }: NodeProps) {
         />
         <button
           onClick={handleEnhance}
-          disabled={isEnhancing || !params.prompt}
+          disabled={isEnhancing || !prompt}
           className="nodrag mt-1 flex items-center gap-1 rounded px-2 py-1 text-xs
             bg-primary text-primary-foreground hover:bg-primary/90
             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

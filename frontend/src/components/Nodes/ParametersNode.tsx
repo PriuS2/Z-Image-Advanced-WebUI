@@ -1,8 +1,7 @@
-import { memo, useState, useEffect } from 'react'
+import { memo, useState, useCallback } from 'react'
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Shuffle, X, Link, ImageIcon } from 'lucide-react'
-import { useGenerationStore } from '../../stores/generationStore'
 
 const resolutionPresets = [
   { label: '1:1', width: 1024, height: 1024 },
@@ -15,14 +14,51 @@ const resolutionPresets = [
 
 const samplers = ['Flow', 'Flow_Unipc', 'Flow_DPM++']
 
-function ParametersNodeComponent({ id, selected }: NodeProps) {
+// 노드 데이터 타입 정의
+interface ParametersNodeData {
+  width?: number
+  height?: number
+  steps?: number
+  seed?: number | null
+  sampler?: string
+  controlScale?: number
+}
+
+// 기본값
+const defaultParams: Required<Omit<ParametersNodeData, 'seed'>> & { seed: number | null } = {
+  width: 1024,
+  height: 1024,
+  steps: 8,
+  seed: null,
+  sampler: 'Flow',
+  controlScale: 0.6,
+}
+
+function ParametersNodeComponent({ id, selected, data }: NodeProps<ParametersNodeData>) {
   const { t } = useTranslation()
-  const { params, setParams, nodeConnections } = useGenerationStore()
-  const { deleteElements } = useReactFlow()
+  const { deleteElements, setNodes } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
   
-  // Check if Control node is connected to show Control Scale (from global store)
-  const isControlConnectedGlobal = nodeConnections.isControlConnected
+  // 노드 자체의 데이터 (글로벌 스토어 대신)
+  const params = {
+    width: data?.width ?? defaultParams.width,
+    height: data?.height ?? defaultParams.height,
+    steps: data?.steps ?? defaultParams.steps,
+    seed: data?.seed ?? defaultParams.seed,
+    sampler: data?.sampler ?? defaultParams.sampler,
+    controlScale: data?.controlScale ?? defaultParams.controlScale,
+  }
+
+  // 노드 데이터 업데이트 함수
+  const setParams = useCallback((newData: Partial<ParametersNodeData>) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, ...newData } }
+          : node
+      )
+    )
+  }, [id, setNodes])
   
   // Subscribe to edges changes to detect connections
   const edges = useStore((state) => state.edges)
@@ -60,7 +96,7 @@ function ParametersNodeComponent({ id, selected }: NodeProps) {
   })
   
   const isImageConnected = !!connectedImageSourceId
-  const isControlConnected = !!connectedControlSourceId || isControlConnectedGlobal
+  const isControlConnected = !!connectedControlSourceId
   
   // Either image or control can be connected, but not both for resolution
   const activeConnectionData = connectedImageData || connectedControlData
