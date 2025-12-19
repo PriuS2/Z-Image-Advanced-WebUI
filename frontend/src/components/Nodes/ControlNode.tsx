@@ -38,6 +38,17 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
     return (sourceNode?.data?.imagePreview as string) || null
   })
   
+  // Update node data so GenerateNode can access it
+  const updateNodeData = useCallback((newData: Record<string, unknown>) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, ...newData } }
+          : node
+      )
+    )
+  }, [id, setNodes])
+  
   // Update connection state
   useEffect(() => {
     setIsConnected(!!connectedSourceId)
@@ -49,25 +60,21 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
       // Only update if different to avoid unnecessary re-renders
       if (sourceImage !== connectedImagePreview) {
         setSourceImage(connectedImagePreview)
-        // Get the source file from the node directly
+        // Get the source file and dimensions from the node directly
         const sourceNode = getNode(connectedSourceId)
         if (sourceNode?.data?.sourceFile) {
           setSourceFile(sourceNode.data.sourceFile as File)
         }
+        // Also copy image dimensions from connected node
+        if (sourceNode?.data?.imageWidth && sourceNode?.data?.imageHeight) {
+          updateNodeData({
+            imageWidth: sourceNode.data.imageWidth as number,
+            imageHeight: sourceNode.data.imageHeight as number,
+          })
+        }
       }
     }
-  }, [connectedSourceId, connectedImagePreview, sourceImage, getNode])
-
-  // Update node data so GenerateNode can access it
-  const updateNodeData = useCallback((newData: Record<string, unknown>) => {
-    setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id === id
-          ? { ...node, data: { ...node.data, ...newData } }
-          : node
-      )
-    )
-  }, [id, setNodes])
+  }, [connectedSourceId, connectedImagePreview, sourceImage, getNode, updateNodeData])
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -75,7 +82,18 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
       setSourceFile(file)
       const reader = new FileReader()
       reader.onload = (event) => {
-        setSourceImage(event.target?.result as string)
+        const previewUrl = event.target?.result as string
+        setSourceImage(previewUrl)
+        
+        // Get image dimensions
+        const img = new window.Image()
+        img.onload = () => {
+          updateNodeData({
+            imageWidth: img.naturalWidth,
+            imageHeight: img.naturalHeight,
+          })
+        }
+        img.src = previewUrl
       }
       reader.readAsDataURL(file)
     }
@@ -117,7 +135,7 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
     setSourceImage(null)
     setSourceFile(null)
     setExtractedImage(null)
-    updateNodeData({ controlImagePath: null })
+    updateNodeData({ controlImagePath: null, imageWidth: null, imageHeight: null })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -125,7 +143,7 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
 
   return (
     <div 
-      className={`min-w-[260px] rounded-lg border bg-card p-4 pl-12 pr-16 relative ${selected ? 'border-primary' : 'border-border'}`}
+      className={`min-w-[320px] rounded-lg border bg-card p-4 pl-12 pr-16 relative ${selected ? 'border-primary' : 'border-border'}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -242,7 +260,7 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
           <img
             src={extractedImage}
             alt="Control"
-            className="w-full rounded-md object-cover"
+            className="w-full max-w-[400px] max-h-[400px] rounded-md object-contain"
           />
         </div>
       )}

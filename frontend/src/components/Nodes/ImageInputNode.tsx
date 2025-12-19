@@ -41,6 +41,15 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
         reader.readAsDataURL(file)
       })
       
+      // Get image dimensions
+      const imageDimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+        const img = new window.Image()
+        img.onload = () => {
+          resolve({ width: img.naturalWidth, height: img.naturalHeight })
+        }
+        img.src = previewUrl
+      })
+      
       // Show preview immediately
       setImage(previewUrl)
 
@@ -48,18 +57,20 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
       const result = await generationApi.uploadImage(file)
       setParams({ controlImagePath: result.path })
       
-      // Update node data for connected nodes to access
+      // Update node data for connected nodes to access (including dimensions)
       updateNodeData({ 
         imagePath: result.path,
         imagePreview: previewUrl,
         sourceFile: file,
+        imageWidth: imageDimensions.width,
+        imageHeight: imageDimensions.height,
       })
       
       toastSuccess(t('common.success'), 'Image uploaded')
     } catch (err) {
       toastError(t('common.error'), String(err))
       setImage(null)
-      updateNodeData({ imagePath: null, imagePreview: null, sourceFile: null })
+      updateNodeData({ imagePath: null, imagePreview: null, sourceFile: null, imageWidth: null, imageHeight: null })
     } finally {
       setIsUploading(false)
     }
@@ -83,7 +94,7 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
   const clearImage = () => {
     setImage(null)
     setParams({ controlImagePath: undefined })
-    updateNodeData({ imagePath: null, imagePreview: null, sourceFile: null })
+    updateNodeData({ imagePath: null, imagePreview: null, sourceFile: null, imageWidth: null, imageHeight: null })
   }
 
   return (

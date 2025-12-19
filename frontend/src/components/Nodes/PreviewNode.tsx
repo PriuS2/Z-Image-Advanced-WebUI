@@ -67,7 +67,7 @@ function PreviewNodeComponent({ id, selected }: NodeProps) {
 
   return (
     <div 
-      className={`min-w-[320px] rounded-lg border bg-card p-4 pl-12 relative ${selected ? 'border-primary' : 'border-border'}`}
+      className={`min-w-[440px] rounded-lg border bg-card p-4 pl-12 relative ${selected ? 'border-primary' : 'border-border'}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -128,7 +128,7 @@ function PreviewNodeComponent({ id, selected }: NodeProps) {
       </div>
       
       {/* Preview area */}
-      <div className="aspect-square w-full rounded-lg border border-border bg-muted/50 overflow-hidden">
+      <div className="w-[400px] h-[400px] rounded-lg border border-border bg-muted/50 overflow-hidden">
         {lastGeneratedImage ? (
           <img
             src={lastGeneratedImage}

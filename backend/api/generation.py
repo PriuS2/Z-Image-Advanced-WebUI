@@ -169,12 +169,19 @@ async def extract_control(
         result = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
         
     elif control_type == "depth":
-        # Simple depth estimation using grayscale (placeholder)
-        # Real depth would use ZoeDepth or MiDaS
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # Apply some contrast enhancement to simulate depth
-        result = cv2.equalizeHist(gray)
-        result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+        # Real depth estimation using transformers depth-estimation pipeline
+        from backend.services.depth_extractor import get_depth_extractor
+        
+        # Convert BGR to RGB for PIL
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(rgb_img)
+        
+        # Get depth map using the depth extractor
+        depth_extractor = get_depth_extractor()
+        depth_image = depth_extractor.extract_depth(pil_image)
+        
+        # Convert back to numpy array (BGR)
+        result = cv2.cvtColor(np.array(depth_image), cv2.COLOR_RGB2BGR)
         
     elif control_type == "mlsd":
         # Line segment detection

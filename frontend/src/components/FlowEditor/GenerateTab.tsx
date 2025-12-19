@@ -36,7 +36,11 @@ const nodeTypes = {
 const handleDataTypes: Record<string, Record<string, string>> = {
   // 출력 핸들 (source)
   prompt: { output: 'prompt' },
-  parameters: { output: 'params' },
+  parameters: { 
+    output: 'params',
+    'image-input': 'image',      // ImageInputNode 연결용
+    'control-input': 'control',  // ControlNode 연결용
+  },
   imageInput: { output: 'image' },
   control: { input: 'image', output: 'control' },
   mask: { input: 'image', output: 'mask' },
