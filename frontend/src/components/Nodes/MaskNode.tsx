@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Paintbrush, Upload, X, Loader2, Link } from 'lucide-react'
@@ -209,12 +210,42 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
           <>
             {sourceImage ? (
               <div className="relative">
-                <img
-                  src={sourceImage}
-                  alt="Source"
-                  className="w-full rounded-md object-cover max-h-32 cursor-pointer"
+                {/* Image preview with mask overlay */}
+                <div 
+                  className="relative w-full rounded-md overflow-hidden cursor-pointer bg-black/20"
                   onClick={() => setShowEditor(true)}
-                />
+                >
+                  {/* Original image - object-contain to show full image */}
+                  <img
+                    src={sourceImage}
+                    alt="Source"
+                    className="w-full object-contain"
+                    style={{ maxHeight: '150px' }}
+                  />
+                  {/* Mask overlay - red background masked by white mask image */}
+                  {maskImage && (
+                    <div 
+                      className="absolute inset-0 bg-red-500"
+                      style={{
+                        opacity: 0.5,
+                        maskImage: `url(${maskImage})`,
+                        WebkitMaskImage: `url(${maskImage})`,
+                        maskSize: 'contain',
+                        WebkitMaskSize: 'contain',
+                        maskRepeat: 'no-repeat',
+                        WebkitMaskRepeat: 'no-repeat',
+                        maskPosition: 'center',
+                        WebkitMaskPosition: 'center',
+                      }}
+                    />
+                  )}
+                  {/* Mask indicator */}
+                  {maskImage && (
+                    <div className="absolute bottom-1 right-1 bg-red-500/80 text-white text-[9px] px-1.5 py-0.5 rounded">
+                      Masked
+                    </div>
+                  )}
+                </div>
                 {isConnected ? (
                   <div className="mt-1 text-[10px] text-green-500 flex items-center gap-1">
                     <Link className="h-2.5 w-2.5" />
@@ -236,7 +267,7 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
                   onClick={() => setShowEditor(true)}
                   className="nodrag mt-2 w-full rounded-md bg-primary py-1.5 text-xs text-primary-foreground"
                 >
-                  Edit Mask
+                  {maskImage ? 'Edit Mask' : 'Draw Mask'}
                 </button>
               </div>
             ) : (
@@ -314,10 +345,27 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
         </div>
       </div>
 
-      {/* Mask editor modal */}
-      {showEditor && sourceImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="max-w-4xl w-full max-h-[90vh] overflow-auto rounded-lg border border-border bg-card p-6">
+      {/* Mask editor modal - rendered via Portal to escape ReactFlow */}
+      {showEditor && sourceImage && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseMove={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+          onDrag={(e) => e.stopPropagation()}
+          onDragStart={(e) => e.stopPropagation()}
+        >
+          <div 
+            className="max-w-4xl w-full max-h-[90vh] overflow-auto rounded-lg border border-border bg-card p-6"
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseMove={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Mask Editor</h3>
               <button
@@ -356,7 +404,8 @@ function MaskNodeComponent({ id, selected }: NodeProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )

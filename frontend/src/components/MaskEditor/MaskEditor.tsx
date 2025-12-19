@@ -11,6 +11,7 @@ interface MaskEditorProps {
 
 export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: MaskEditorProps) {
   const { t } = useTranslation()
+  const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
   
@@ -18,6 +19,8 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
   const [brushSize, setBrushSize] = useState(30)
   const [tool, setTool] = useState<'brush' | 'eraser'>('brush')
   const [zoom, setZoom] = useState(1)
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
+  const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null)
 
   // Initialize canvases
   useEffect(() => {
@@ -33,68 +36,191 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
+      // Calculate display size (max 600px width or height, maintaining aspect ratio)
+      const maxSize = 600
+      let displayWidth = img.width
+      let displayHeight = img.height
+      
+      if (img.width > img.height) {
+        if (img.width > maxSize) {
+          displayWidth = maxSize
+          displayHeight = (img.height / img.width) * maxSize
+        }
+      } else {
+        if (img.height > maxSize) {
+          displayHeight = maxSize
+          displayWidth = (img.width / img.height) * maxSize
+        }
+      }
+      
+      // Set canvas internal size to match image (for high quality)
       canvas.width = img.width
       canvas.height = img.height
       maskCanvas.width = img.width
       maskCanvas.height = img.height
       
+      // Store display size for CSS
+      setCanvasSize({ width: displayWidth, height: displayHeight })
+      
       ctx.drawImage(img, 0, 0)
       
       // Initialize mask as transparent
-      maskCtx.fillStyle = 'rgba(0, 0, 0, 0)'
-      maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height)
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
     }
     img.src = image
   }, [image])
 
-  const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return
+  // Convert mask to white-on-transparent for export
+  const getMaskDataUrl = useCallback(() => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return null
 
+    // Create a temporary canvas for conversion
+    const tempCanvas = document.createElement('canvas')
+    tempCanvas.width = maskCanvas.width
+    tempCanvas.height = maskCanvas.height
+    const tempCtx = tempCanvas.getContext('2d')
+    if (!tempCtx) return null
+
+    // Get the mask data
+    const maskCtx = maskCanvas.getContext('2d')
+    if (!maskCtx) return null
+    
+    const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+    const data = imageData.data
+
+    // Convert red areas to white (where alpha > 0, set to white)
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 0) {
+        // Has alpha - this is a masked area, make it white
+        data[i] = 255     // R
+        data[i + 1] = 255 // G
+        data[i + 2] = 255 // B
+        data[i + 3] = 255 // A
+      }
+    }
+
+    tempCtx.putImageData(imageData, 0, 0)
+    return tempCanvas.toDataURL('image/png')
+  }, [])
+
+  // Draw function that directly uses coordinates - draws red for visibility
+  const drawAt = useCallback((x: number, y: number) => {
     const maskCanvas = maskCanvasRef.current
     if (!maskCanvas) return
 
     const maskCtx = maskCanvas.getContext('2d')
     if (!maskCtx) return
 
-    const rect = maskCanvas.getBoundingClientRect()
-    const scaleX = maskCanvas.width / rect.width
-    const scaleY = maskCanvas.height / rect.height
-    
-    const x = (e.clientX - rect.left) * scaleX
-    const y = (e.clientY - rect.top) * scaleY
-
     maskCtx.beginPath()
     maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
     
     if (tool === 'brush') {
-      maskCtx.fillStyle = 'rgba(255, 255, 255, 1)'
+      // Draw red for visibility
+      maskCtx.fillStyle = 'rgba(255, 80, 80, 0.7)'
       maskCtx.fill()
     } else {
       maskCtx.globalCompositeOperation = 'destination-out'
       maskCtx.fill()
       maskCtx.globalCompositeOperation = 'source-over'
     }
+  }, [brushSize, tool])
 
-    // Notify parent of mask change
-    if (onMaskChange) {
-      onMaskChange(maskCanvas.toDataURL('image/png'))
+  // Draw line between two points for smooth strokes
+  const drawLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+
+    const maskCtx = maskCanvas.getContext('2d')
+    if (!maskCtx) return
+
+    maskCtx.beginPath()
+    maskCtx.moveTo(x1, y1)
+    maskCtx.lineTo(x2, y2)
+    maskCtx.lineWidth = brushSize
+    maskCtx.lineCap = 'round'
+    maskCtx.lineJoin = 'round'
+    
+    if (tool === 'brush') {
+      // Draw red for visibility
+      maskCtx.strokeStyle = 'rgba(255, 80, 80, 0.7)'
+      maskCtx.stroke()
+    } else {
+      maskCtx.globalCompositeOperation = 'destination-out'
+      maskCtx.strokeStyle = 'rgba(255, 80, 80, 1)'
+      maskCtx.stroke()
+      maskCtx.globalCompositeOperation = 'source-over'
     }
-  }, [isDrawing, brushSize, tool, onMaskChange])
+  }, [brushSize, tool])
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getCanvasCoordinates = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return null
+
+    const rect = maskCanvas.getBoundingClientRect()
+    const scaleX = maskCanvas.width / rect.width
+    const scaleY = maskCanvas.height / rect.height
+    
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    }
+  }, [])
+
+  const notifyMaskChange = useCallback(() => {
+    if (!onMaskChange) return
+    const dataUrl = getMaskDataUrl()
+    if (dataUrl) {
+      onMaskChange(dataUrl)
+    }
+  }, [onMaskChange, getMaskDataUrl])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const coords = getCanvasCoordinates(e)
+    if (!coords) return
+
     setIsDrawing(true)
-    draw(e)
-  }
+    setLastPos(coords)
+    drawAt(coords.x, coords.y)
+    notifyMaskChange()
+  }, [getCanvasCoordinates, drawAt, notifyMaskChange])
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
     setIsDrawing(false)
-  }
+    setLastPos(null)
+  }, [])
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    draw(e)
-  }
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!isDrawing) return
 
-  const clearMask = () => {
+    const coords = getCanvasCoordinates(e)
+    if (!coords) return
+
+    if (lastPos) {
+      drawLine(lastPos.x, lastPos.y, coords.x, coords.y)
+    } else {
+      drawAt(coords.x, coords.y)
+    }
+    setLastPos(coords)
+    notifyMaskChange()
+  }, [isDrawing, lastPos, getCanvasCoordinates, drawLine, drawAt, notifyMaskChange])
+
+  const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDrawing(false)
+    setLastPos(null)
+  }, [])
+
+  const clearMask = useCallback(() => {
     const maskCanvas = maskCanvasRef.current
     if (!maskCanvas) return
 
@@ -102,21 +228,18 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
     if (!maskCtx) return
 
     maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+    notifyMaskChange()
+  }, [notifyMaskChange])
 
-    if (onMaskChange) {
-      onMaskChange(maskCanvas.toDataURL('image/png'))
-    }
-  }
-
-  const downloadMask = () => {
-    const maskCanvas = maskCanvasRef.current
-    if (!maskCanvas) return
+  const downloadMask = useCallback(() => {
+    const dataUrl = getMaskDataUrl()
+    if (!dataUrl) return
 
     const link = document.createElement('a')
     link.download = 'mask.png'
-    link.href = maskCanvas.toDataURL('image/png')
+    link.href = dataUrl
     link.click()
-  }
+  }, [getMaskDataUrl])
 
   return (
     <div className="flex flex-col gap-4">
@@ -126,7 +249,7 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
           <button
             onClick={() => setTool('brush')}
             className={`p-2 ${tool === 'brush' ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
-            title="Brush"
+            title="Brush (draw mask)"
           >
             <Brush className="h-4 w-4" />
           </button>
@@ -189,41 +312,61 @@ export function MaskEditor({ image, onMaskChange, width = 512, height = 512 }: M
 
       {/* Canvas container */}
       <div 
-        className="relative overflow-auto rounded-lg border border-border bg-muted/20"
-        style={{ maxHeight: '70vh' }}
+        ref={containerRef}
+        className="relative overflow-auto rounded-lg border border-border flex items-start justify-center"
+        style={{ 
+          maxHeight: '60vh',
+          background: 'repeating-conic-gradient(#404040 0% 25%, #303030 0% 50%) 50% / 16px 16px',
+        }}
       >
-        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+        <div 
+          className="relative"
+          style={{ 
+            transform: `scale(${zoom})`, 
+            transformOrigin: 'top left',
+            width: canvasSize.width > 0 ? `${canvasSize.width}px` : 'auto',
+            height: canvasSize.height > 0 ? `${canvasSize.height}px` : 'auto',
+          }}
+        >
           {/* Base image canvas */}
           <canvas
             ref={canvasRef}
-            className="absolute top-0 left-0"
-            style={{ maxWidth: '100%' }}
+            style={{ 
+              display: 'block',
+              width: canvasSize.width > 0 ? `${canvasSize.width}px` : 'auto',
+              height: canvasSize.height > 0 ? `${canvasSize.height}px` : 'auto',
+            }}
           />
           
-          {/* Mask canvas (overlay) */}
+          {/* Mask canvas (overlay) - draws red for visibility */}
           <canvas
             ref={maskCanvasRef}
             onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
             onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseUp}
-            className="relative cursor-crosshair"
+            onMouseLeave={handleMouseLeave}
             style={{ 
-              maxWidth: '100%',
-              opacity: 0.5,
-              mixBlendMode: 'multiply',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              cursor: 'crosshair',
+              width: canvasSize.width > 0 ? `${canvasSize.width}px` : 'auto',
+              height: canvasSize.height > 0 ? `${canvasSize.height}px` : 'auto',
             }}
           />
         </div>
       </div>
 
-      {/* Brush preview */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <div 
-          className="rounded-full border border-primary bg-primary/30"
-          style={{ width: brushSize, height: brushSize }}
-        />
-        <span>Brush preview</span>
+      {/* Instructions */}
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <div 
+            className="rounded-full bg-red-500/70"
+            style={{ width: Math.min(brushSize, 40), height: Math.min(brushSize, 40) }}
+          />
+          <span>Brush ({brushSize}px)</span>
+        </div>
+        <span className="text-xs">• Red areas will be inpainted</span>
       </div>
     </div>
   )

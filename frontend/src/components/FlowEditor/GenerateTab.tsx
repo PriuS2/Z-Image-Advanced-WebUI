@@ -43,7 +43,7 @@ const handleDataTypes: Record<string, Record<string, string>> = {
   },
   imageInput: { output: 'image' },
   control: { input: 'image', output: 'control' },
-  mask: { input: 'image', output: 'mask' },
+  mask: { input: 'image', mask: 'mask' },  // output handle id가 'mask'임
   generate: { 
     prompt: 'prompt', 
     params: 'params', 
