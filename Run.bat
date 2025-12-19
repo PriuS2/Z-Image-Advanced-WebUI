@@ -35,8 +35,20 @@ if not exist "uploads" mkdir uploads
 if not exist "controls" mkdir controls
 if not exist "masks" mkdir masks
 
+:: Read config from config.yaml using Python
+echo Reading configuration from config.yaml...
+for /f %%i in ('call venv\Scripts\python.exe -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['server']['port'])"') do set BACKEND_PORT=%%i
+for /f %%i in ('call venv\Scripts\python.exe -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(c['server']['host'])"') do set BACKEND_HOST=%%i
+for /f %%i in ('call venv\Scripts\python.exe -c "import yaml; c=yaml.safe_load(open('config.yaml')); print(str(c['server']['debug']).lower())"') do set DEBUG_MODE=%%i
+
+if "%DEBUG_MODE%"=="true" (
+    set RELOAD_FLAG=--reload
+) else (
+    set RELOAD_FLAG=
+)
+
 echo [1/2] Starting Backend Server...
-start "Z-Image Backend" cmd /k "cd /d %~dp0 && call venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload"
+start "Z-Image Backend" cmd /k "cd /d %~dp0 && call venv\Scripts\activate.bat && python -m uvicorn backend.main:app --host %BACKEND_HOST% --port %BACKEND_PORT% %RELOAD_FLAG%"
 
 :: Wait for backend to start
 echo Waiting for backend to initialize...
@@ -50,9 +62,9 @@ echo ============================================
 echo    Servers are starting...
 echo ============================================
 echo.
-echo    Backend:  http://localhost:8080
+echo    Backend:  http://localhost:%BACKEND_PORT%
 echo    Frontend: http://localhost:3000
-echo    API Docs: http://localhost:8080/docs
+echo    API Docs: http://localhost:%BACKEND_PORT%/docs
 echo.
 echo    Press any key to open the WebUI...
 echo ============================================

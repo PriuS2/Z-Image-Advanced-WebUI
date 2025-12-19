@@ -67,17 +67,19 @@ if errorlevel 1 (
 echo.
 
 :: ==========================================
-:: Step 5: Install VideoX-Fun
+:: Step 5: Install VideoX-Fun dependencies
 :: ==========================================
-echo [5/6] Installing VideoX-Fun...
-if exist "VideoX-Fun\pyproject.toml" (
-    pip install -e ./VideoX-Fun
+echo [5/6] Installing VideoX-Fun dependencies...
+if exist "VideoX-Fun\requirements.txt" (
+    echo Installing VideoX-Fun requirements ^(excluding gradio^)...
+    pip install timm tomesd torchdiffeq torchsde decord datasets scikit-image SentencePiece albumentations "imageio[ffmpeg]" "imageio[pyav]" tensorboard beautifulsoup4 ftfy func_timeout
     if errorlevel 1 (
-        echo [WARNING] VideoX-Fun installation may have issues.
-        echo You can manually install later with: pip install -e ./VideoX-Fun
+        echo [WARNING] Some VideoX-Fun dependencies may have issues.
     ) else (
-        echo VideoX-Fun installed successfully.
+        echo VideoX-Fun dependencies installed successfully.
     )
+    echo.
+    echo Note: VideoX-Fun will be loaded via PYTHONPATH at runtime.
 ) else (
     echo [WARNING] VideoX-Fun folder not found. Skipping...
     echo Make sure to initialize git submodules: git submodule update --init --recursive
@@ -113,6 +115,8 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+echo Installing yaml parser for config...
+call npm install yaml --save-dev
 cd ..
 
 echo.

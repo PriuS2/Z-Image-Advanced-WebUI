@@ -65,11 +65,9 @@ export const generationApi = {
     try {
       const formData = new FormData()
       formData.append('image', imageFile)
-      formData.append('request', JSON.stringify({
-        control_type: controlType,
-        low_threshold: lowThreshold,
-        high_threshold: highThreshold,
-      }))
+      formData.append('control_type', controlType)
+      formData.append('low_threshold', lowThreshold.toString())
+      formData.append('high_threshold', highThreshold.toString())
       
       const response = await apiClient.post<ControlExtractionResponse>(
         '/generation/extract-control',

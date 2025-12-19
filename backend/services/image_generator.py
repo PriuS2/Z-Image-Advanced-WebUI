@@ -226,28 +226,41 @@ class ImageGeneratorService:
                 await progress_callback(35, "Loading ControlNet weights..." if use_control else "Transformer loaded...")
             
             # Load ControlNet Union weights (only for control pipeline)
-            if use_control and controlnet_path and os.path.exists(controlnet_path):
-                if os.path.isfile(controlnet_path) and controlnet_path.endswith(".safetensors"):
-                    # 단일 safetensors 파일
-                    from safetensors.torch import load_file
-                    state_dict = await asyncio.to_thread(load_file, controlnet_path)
-                    m, u = self.transformer.load_state_dict(state_dict, strict=False)
-                    logger.info(f"ControlNet loaded from file - missing keys: {len(m)}, unexpected keys: {len(u)}")
-                elif os.path.isdir(controlnet_path):
-                    # 폴더인 경우 - 폴더 안의 safetensors 파일들을 찾아서 로드
-                    loaded = False
-                    for filename in os.listdir(controlnet_path):
-                        if filename.endswith(".safetensors"):
-                            file_path = os.path.join(controlnet_path, filename)
-                            from safetensors.torch import load_file
-                            state_dict = await asyncio.to_thread(load_file, file_path)
-                            m, u = self.transformer.load_state_dict(state_dict, strict=False)
-                            logger.info(f"ControlNet loaded from {filename} - missing keys: {len(m)}, unexpected keys: {len(u)}")
-                            loaded = True
-                            break
-                    if not loaded:
-                        logger.warning(f"No safetensors file found in ControlNet folder: {controlnet_path}")
+            print(f"[DEBUG] use_control={use_control}, controlnet_path={controlnet_path}")
+            if use_control and controlnet_path:
+                print(f"[DEBUG] controlnet_path exists: {os.path.exists(controlnet_path)}")
+                print(f"[DEBUG] is file: {os.path.isfile(controlnet_path)}")
+                
+                if os.path.exists(controlnet_path):
+                    if os.path.isfile(controlnet_path) and controlnet_path.endswith(".safetensors"):
+                        # 단일 safetensors 파일
+                        from safetensors.torch import load_file
+                        print(f"[DEBUG] Loading ControlNet from file: {controlnet_path}")
+                        state_dict = await asyncio.to_thread(load_file, controlnet_path)
+                        m, u = self.transformer.load_state_dict(state_dict, strict=False)
+                        print(f"[DEBUG] ControlNet loaded! missing keys: {len(m)}, unexpected keys: {len(u)}")
+                        logger.info(f"ControlNet loaded from file - missing keys: {len(m)}, unexpected keys: {len(u)}")
+                    elif os.path.isdir(controlnet_path):
+                        # 폴더인 경우 - 폴더 안의 safetensors 파일들을 찾아서 로드
+                        loaded = False
+                        for filename in os.listdir(controlnet_path):
+                            if filename.endswith(".safetensors"):
+                                file_path = os.path.join(controlnet_path, filename)
+                                from safetensors.torch import load_file
+                                print(f"[DEBUG] Loading ControlNet from folder: {file_path}")
+                                state_dict = await asyncio.to_thread(load_file, file_path)
+                                m, u = self.transformer.load_state_dict(state_dict, strict=False)
+                                print(f"[DEBUG] ControlNet loaded! missing keys: {len(m)}, unexpected keys: {len(u)}")
+                                logger.info(f"ControlNet loaded from {filename} - missing keys: {len(m)}, unexpected keys: {len(u)}")
+                                loaded = True
+                                break
+                        if not loaded:
+                            print(f"[DEBUG] No safetensors file found in folder: {controlnet_path}")
+                            logger.warning(f"No safetensors file found in ControlNet folder: {controlnet_path}")
+                else:
+                    print(f"[DEBUG] ControlNet path does not exist: {controlnet_path}")
             elif use_control:
+                print(f"[DEBUG] ControlNet path is None or empty")
                 logger.warning(f"ControlNet not found: {controlnet_path}")
             
             if progress_callback:
@@ -445,34 +458,31 @@ class ImageGeneratorService:
                 except Exception as e:
                     logger.warning(f"Failed to load control image from path: {e}")
             
-            # Prepare control image if available (for control pipeline)
+            # Prepare images for pipeline (as PIL images)
+            # Pipeline's image_processor will handle resize and normalization
             control_image = None
-            if control_image_pil is not None and self.pipe_type == 'control':
-                try:
-                    from videox_fun.utils.utils import get_image_latent
-                    control_image = get_image_latent(
-                        control_image_pil,
-                        sample_size=[params.height, params.width]
-                    )[:, :, 0]
-                except Exception as e:
-                    logger.warning(f"Failed to process control image: {e}")
-            
-            # Prepare inpaint images if available
             inpaint_image = None
             mask_image = None
-            if params.original_image is not None and params.mask_image is not None:
-                try:
-                    from videox_fun.utils.utils import get_image_latent
-                    inpaint_image = get_image_latent(
-                        params.original_image,
-                        sample_size=[params.height, params.width]
-                    )[:, :, 0]
-                    mask_image = get_image_latent(
-                        params.mask_image,
-                        sample_size=[params.height, params.width]
-                    )[:, :1, 0]
-                except Exception as e:
-                    logger.warning(f"Failed to process inpaint images: {e}")
+            
+            if self.pipe_type == 'control':
+                # Control image: pass as PIL, pipeline will preprocess
+                if control_image_pil is not None:
+                    control_image = control_image_pil
+                    logger.info(f"Control image prepared: size={control_image.size}, mode={control_image.mode}")
+                
+                # Inpaint image: pass as PIL or None
+                if params.original_image is not None:
+                    inpaint_image = params.original_image
+                    logger.info(f"Inpaint image prepared: size={inpaint_image.size}")
+                
+                # Mask image: pass as PIL (white = generate all, black = keep original)
+                if params.mask_image is not None:
+                    mask_image = params.mask_image
+                    logger.info(f"Mask image prepared: size={mask_image.size}")
+                else:
+                    # Default: white mask (all 255 = generate entire image)
+                    mask_image = Image.new('L', (params.width, params.height), 255)
+                    logger.info(f"Using default white mask: size={mask_image.size}")
             
             logger.info(f"Generating image with {self.pipe_type} pipeline: {params.prompt[:50]}...")
             

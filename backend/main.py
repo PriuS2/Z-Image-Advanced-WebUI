@@ -13,6 +13,11 @@ from fastapi.staticfiles import StaticFiles
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Add VideoX-Fun to path
+videox_fun_path = project_root / "VideoX-Fun"
+if videox_fun_path.exists():
+    sys.path.insert(0, str(videox_fun_path))
+
 from backend.config import get_config
 from backend.api import api_router
 from backend.db import init_db, AsyncSessionLocal
