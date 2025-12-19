@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useCallback } from 'react'
+import { memo, useState, useEffect, useCallback, useRef } from 'react'
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow'
 import { useTranslation } from 'react-i18next'
 import { Play, Loader2, X } from 'lucide-react'
@@ -8,10 +8,13 @@ import { useToast } from '../../hooks/useToast'
 
 function GenerateNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
-  const { params, progress, startGeneration, updateConnectionsFromEdges, nodeConnections } = useGenerationStore()
+  const { params, progress, startGeneration, updateConnectionsFromEdges, nodeConnections, lastGeneratedImage } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
-  const { deleteElements, getNode, getEdges } = useReactFlow()
+  const { deleteElements, getNode, getEdges, setNodes } = useReactFlow()
   const [isHovered, setIsHovered] = useState(false)
+  
+  // Track this node's active task ID
+  const activeTaskIdRef = useRef<number | null>(null)
   
   // Subscribe to edges changes to track connections
   const edges = useStore((state) => state.edges)
@@ -20,6 +23,28 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
   useEffect(() => {
     updateConnectionsFromEdges(edges, id)
   }, [edges, id, updateConnectionsFromEdges])
+
+  // Update node data when generation completes
+  useEffect(() => {
+    // Check if this node started the current generation and it's now complete
+    if (
+      activeTaskIdRef.current !== null &&
+      progress.taskId === activeTaskIdRef.current &&
+      !progress.isGenerating &&
+      lastGeneratedImage
+    ) {
+      // Store generated image in node data for connected nodes (e.g., PreviewNode)
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id
+            ? { ...node, data: { ...node.data, generatedImage: lastGeneratedImage } }
+            : node
+        )
+      )
+      // Clear active task
+      activeTaskIdRef.current = null
+    }
+  }, [progress.taskId, progress.isGenerating, lastGeneratedImage, id, setNodes])
 
   // Get control image path from connected control node
   const getControlDataFromConnectedNode = useCallback(() => {
@@ -40,6 +65,37 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
     return { controlImagePath: null, controlType: null }
   }, [getEdges, getNode, id])
 
+  // Get mask image path from connected mask node
+  const getMaskDataFromConnectedNode = useCallback(() => {
+    const currentEdges = getEdges()
+    const maskEdge = currentEdges.find(
+      (e) => e.target === id && e.targetHandle === 'mask'
+    )
+    
+    if (maskEdge) {
+      const maskNode = getNode(maskEdge.source)
+      return {
+        maskImagePath: maskNode?.data?.maskImagePath || null,
+        originalImagePath: maskNode?.data?.originalImagePath || null,
+      }
+    }
+    return { maskImagePath: null, originalImagePath: null }
+  }, [getEdges, getNode, id])
+
+  // Get original image path from connected image node (for inpainting)
+  const getImageDataFromConnectedNode = useCallback(() => {
+    const currentEdges = getEdges()
+    const imageEdge = currentEdges.find(
+      (e) => e.target === id && e.targetHandle === 'image'
+    )
+    
+    if (imageEdge) {
+      const imageNode = getNode(imageEdge.source)
+      return imageNode?.data?.imagePath || null
+    }
+    return null
+  }, [getEdges, getNode, id])
+
   const handleGenerate = async () => {
     if (!params.prompt) {
       toastError('Prompt is required')
@@ -49,6 +105,13 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
     try {
       // Get control data from connected node
       const { controlImagePath, controlType } = getControlDataFromConnectedNode()
+      // Get mask data from connected node (includes original image for inpainting)
+      const { maskImagePath, originalImagePath: maskOriginalPath } = getMaskDataFromConnectedNode()
+      // Get image data from connected image node
+      const directImagePath = getImageDataFromConnectedNode()
+      
+      // Use original image from mask node or direct image connection
+      const originalImagePath = maskOriginalPath || directImagePath
       
       const task = await generationApi.generate({
         prompt: params.prompt,
@@ -61,8 +124,12 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
         sampler: params.sampler,
         control_type: controlType || params.controlType,
         control_image_path: controlImagePath,
+        mask_image_path: maskImagePath,
+        original_image_path: originalImagePath,
       })
       
+      // Store task ID to track this node's generation
+      activeTaskIdRef.current = task.id
       startGeneration(task.id)
       toastSuccess(t('common.success'), `Task ${task.id} started`)
     } catch (err) {
@@ -93,31 +160,51 @@ function GenerateNodeComponent({ id, selected }: NodeProps) {
         type="target"
         position={Position.Left}
         id="prompt"
-        style={{ top: '30%' }}
+        style={{ top: '12%' }}
         className="!bg-green-500 !w-3 !h-3"
       />
-      <div className="absolute left-2 text-[9px] text-green-500 font-medium" style={{ top: '27%' }}>
+      <div className="absolute left-2 text-[9px] text-green-500 font-medium" style={{ top: '9%' }}>
         Prompt
       </div>
       <Handle
         type="target"
         position={Position.Left}
         id="params"
-        style={{ top: '50%' }}
+        style={{ top: '30%' }}
         className="!bg-purple-500 !w-3 !h-3"
       />
-      <div className="absolute left-2 text-[9px] text-purple-500 font-medium" style={{ top: '47%' }}>
+      <div className="absolute left-2 text-[9px] text-purple-500 font-medium" style={{ top: '27%' }}>
         Params
       </div>
       <Handle
         type="target"
         position={Position.Left}
+        id="image"
+        style={{ top: '48%' }}
+        className="!bg-blue-500 !w-3 !h-3"
+      />
+      <div className="absolute left-2 text-[9px] text-blue-500 font-medium" style={{ top: '45%' }}>
+        Image
+      </div>
+      <Handle
+        type="target"
+        position={Position.Left}
         id="control"
-        style={{ top: '70%' }}
+        style={{ top: '66%' }}
         className="!bg-orange-500 !w-3 !h-3"
       />
-      <div className="absolute left-2 text-[9px] text-orange-500 font-medium" style={{ top: '67%' }}>
+      <div className="absolute left-2 text-[9px] text-orange-500 font-medium" style={{ top: '63%' }}>
         Control
+      </div>
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="mask"
+        style={{ top: '84%' }}
+        className="!bg-pink-500 !w-3 !h-3"
+      />
+      <div className="absolute left-2 text-[9px] text-pink-500 font-medium" style={{ top: '81%' }}>
+        Mask
       </div>
       
       <div className="mb-3 text-sm font-semibold">{t('nodes.generate')}</div>

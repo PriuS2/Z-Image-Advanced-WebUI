@@ -40,7 +40,14 @@ const handleDataTypes: Record<string, Record<string, string>> = {
   imageInput: { output: 'image' },
   control: { input: 'image', output: 'control' },
   mask: { input: 'image', output: 'mask' },
-  generate: { prompt: 'prompt', params: 'params', control: 'control', output: 'image' },
+  generate: { 
+    prompt: 'prompt', 
+    params: 'params', 
+    image: 'image',    // ImageInputNode 연결용
+    control: 'control', 
+    mask: 'mask',      // MaskNode 연결용
+    output: 'image' 
+  },
   preview: { input: 'image' },
 }
 

@@ -1,7 +1,7 @@
-import { memo, useState, useRef, useCallback } from 'react'
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow'
+import { memo, useState, useRef, useCallback, useEffect } from 'react'
+import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Upload, X } from 'lucide-react'
+import { Loader2, Upload, X, Link } from 'lucide-react'
 import { generationApi } from '../../api/generation'
 import { useGenerationStore } from '../../stores/generationStore'
 import { useToast } from '../../hooks/useToast'
@@ -12,7 +12,7 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
   const { t } = useTranslation()
   const { setParams } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
-  const { deleteElements, setNodes } = useReactFlow()
+  const { deleteElements, setNodes, getNode } = useReactFlow()
   
   const [controlType, setControlType] = useState(data?.controlType || 'canny')
   const [isExtracting, setIsExtracting] = useState(false)
@@ -20,7 +20,43 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
   const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [isHovered, setIsHovered] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Subscribe to edges changes to detect connections
+  const edges = useStore((state) => state.edges)
+  
+  // Track the connected source node ID
+  const connectedSourceId = edges.find(
+    (e) => e.target === id && e.targetHandle === 'input'
+  )?.source || null
+  
+  // Subscribe to the specific connected node's imagePreview using nodeInternals
+  const connectedImagePreview = useStore((state) => {
+    if (!connectedSourceId) return null
+    const sourceNode = state.nodeInternals.get(connectedSourceId)
+    return (sourceNode?.data?.imagePreview as string) || null
+  })
+  
+  // Update connection state
+  useEffect(() => {
+    setIsConnected(!!connectedSourceId)
+  }, [connectedSourceId])
+  
+  // Update source image when connected node's image changes
+  useEffect(() => {
+    if (connectedSourceId && connectedImagePreview) {
+      // Only update if different to avoid unnecessary re-renders
+      if (sourceImage !== connectedImagePreview) {
+        setSourceImage(connectedImagePreview)
+        // Get the source file from the node directly
+        const sourceNode = getNode(connectedSourceId)
+        if (sourceNode?.data?.sourceFile) {
+          setSourceFile(sourceNode.data.sourceFile as File)
+        }
+      }
+    }
+  }, [connectedSourceId, connectedImagePreview, sourceImage, getNode])
 
   // Update node data so GenerateNode can access it
   const updateNodeData = useCallback((newData: Record<string, unknown>) => {
@@ -108,9 +144,10 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
         type="target"
         position={Position.Left}
         id="input"
-        className="!bg-blue-500 !w-3 !h-3"
+        className={`!w-3 !h-3 ${isConnected ? '!bg-green-500' : '!bg-blue-500'}`}
       />
-      <div className="absolute left-2 top-[50%] -translate-y-1/2 text-[9px] text-blue-500 font-medium">
+      <div className={`absolute left-2 top-[50%] -translate-y-1/2 text-[9px] font-medium flex items-center gap-1 ${isConnected ? 'text-green-500' : 'text-blue-500'}`}>
+        {isConnected && <Link className="h-2.5 w-2.5" />}
         Image
       </div>
       
@@ -125,27 +162,44 @@ function ControlNodeComponent({ id, selected, data }: NodeProps) {
               alt="Source"
               className="w-full rounded-md object-cover max-h-24"
             />
-            <button
-              onClick={clearImage}
-              className="nodrag absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground"
-            >
-              <X className="h-3 w-3" />
-            </button>
+            {isConnected ? (
+              <div className="mt-1 text-[10px] text-green-500 flex items-center gap-1">
+                <Link className="h-2.5 w-2.5" />
+                Connected
+              </div>
+            ) : (
+              <button
+                onClick={clearImage}
+                className="nodrag absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
         ) : (
           <div className="relative">
-            <div className="flex flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed
-              border-muted-foreground/25 p-3 text-center hover:border-primary/50 transition-colors cursor-pointer">
-              <Upload className="h-5 w-5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{t('generate.uploadImage')}</span>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="nodrag absolute inset-0 cursor-pointer opacity-0"
-            />
+            {isConnected ? (
+              <div className="flex flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed
+                border-green-500/50 p-3 text-center">
+                <Link className="h-5 w-5 text-green-500" />
+                <span className="text-xs text-green-500">Waiting for image...</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed
+                  border-muted-foreground/25 p-3 text-center hover:border-primary/50 transition-colors cursor-pointer">
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{t('generate.uploadImage')}</span>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="nodrag absolute inset-0 cursor-pointer opacity-0"
+                />
+              </>
+            )}
           </div>
         )}
       </div>

@@ -129,6 +129,16 @@ class QueueManager:
                 except Exception as e:
                     print(f"Failed to load mask image: {e}")
             
+            # Load original image for inpainting if path is provided
+            original_image = None
+            original_image_path = task.params.get("original_image_path")
+            if original_image_path:
+                try:
+                    from PIL import Image as PILImage
+                    original_image = PILImage.open(original_image_path).convert('RGB')
+                except Exception as e:
+                    print(f"Failed to load original image: {e}")
+            
             # Create generation params with control support
             params = GenerationParams(
                 prompt=task.params.get("prompt", ""),
@@ -143,6 +153,7 @@ class QueueManager:
                 control_image=control_image,
                 control_image_path=control_image_path,
                 mask_image=mask_image,
+                original_image=original_image,
             )
             
             # Progress callback

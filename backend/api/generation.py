@@ -30,6 +30,7 @@ class GenerationRequest(BaseModel):
     control_type: Optional[str] = None
     control_image_path: Optional[str] = None
     mask_image_path: Optional[str] = None
+    original_image_path: Optional[str] = None  # For inpainting: the original image to inpaint
     lora_name: Optional[str] = None
     lora_weight: float = 0.8
 

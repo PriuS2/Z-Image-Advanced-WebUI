@@ -10,7 +10,18 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
   const { t } = useTranslation()
   const { setParams } = useGenerationStore()
   const { error: toastError, success: toastSuccess } = useToast()
-  const { deleteElements } = useReactFlow()
+  const { deleteElements, setNodes } = useReactFlow()
+
+  // Update node data so connected nodes can access it
+  const updateNodeData = useCallback((newData: Record<string, unknown>) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, ...newData } }
+          : node
+      )
+    )
+  }, [id, setNodes])
   
   const [image, setImage] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -18,21 +29,37 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
 
   const uploadFile = async (file: File) => {
     setIsUploading(true)
+    
     try {
+      // Read file as data URL first (wait for it to complete)
+      const previewUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          resolve(event.target?.result as string)
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      
       // Show preview immediately
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        setImage(event.target?.result as string)
-      }
-      reader.readAsDataURL(file)
+      setImage(previewUrl)
 
       // Upload to server
       const result = await generationApi.uploadImage(file)
       setParams({ controlImagePath: result.path })
+      
+      // Update node data for connected nodes to access
+      updateNodeData({ 
+        imagePath: result.path,
+        imagePreview: previewUrl,
+        sourceFile: file,
+      })
+      
       toastSuccess(t('common.success'), 'Image uploaded')
     } catch (err) {
       toastError(t('common.error'), String(err))
       setImage(null)
+      updateNodeData({ imagePath: null, imagePreview: null, sourceFile: null })
     } finally {
       setIsUploading(false)
     }
@@ -56,6 +83,7 @@ function ImageInputNodeComponent({ id, selected }: NodeProps) {
   const clearImage = () => {
     setImage(null)
     setParams({ controlImagePath: undefined })
+    updateNodeData({ imagePath: null, imagePreview: null, sourceFile: null })
   }
 
   return (

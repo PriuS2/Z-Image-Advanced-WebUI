@@ -13,6 +13,7 @@ interface GenerationRequest {
   control_type?: string | null
   control_image_path?: string | null
   mask_image_path?: string | null
+  original_image_path?: string | null  // For inpainting: the original image to inpaint
 }
 
 interface TaskResponse {

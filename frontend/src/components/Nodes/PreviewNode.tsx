@@ -53,6 +53,8 @@ function PreviewNodeComponent({ id, selected }: NodeProps) {
         control_context_scale: params.controlScale,
         sampler: params.sampler,
         control_type: params.controlType,
+        control_image_path: params.controlImagePath,
+        mask_image_path: params.maskImage,
       })
       startGeneration(task.id)
       toastSuccess(t('common.success'), `Task ${task.id} started`)
